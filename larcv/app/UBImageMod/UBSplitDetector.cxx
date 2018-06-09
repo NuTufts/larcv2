@@ -120,18 +120,18 @@ namespace larcv {
     const larcv::ImageMeta& meta = img_v.front().meta();
     float dtick = _box_pixel_height*meta.pixel_height();
 
-    float dtickimg = (meta.max_y()-meta.min_y() - dtick);
-    int nt = dtickimg/dtick;
-    if ( fabs(nt*dtick-dtickimg)>0.5 ) nt++;
+    float dtickimg = meta.max_y()-meta.min_y() - dtick;
+    int nt = dtickimg/(0.5*dtick);
+    if ( fabs(nt*0.5*dtick-dtickimg)>0.5 ) nt++;
     float tstep  = dtickimg/nt;
-    float startt = meta.min_y() + 0.5*dtick;
+    float startt = meta.min_y() + dtick/2;
 
     // --- z divisions ---------
 
     int zcols      = img_v.front().meta().cols();
 
-    int zend       = zcols-zwidth/2;
-    int zstart     = zwidth/2;
+    int zend       = zcols-_box_pixel_width*meta.pixel_width()/2;
+    int zstart     = _box_pixel_width*meta.pixel_width()/2;
     int zspan      = zend-zstart;
     int nz         = zspan/(zwidth/2);
     if ( abs( (zwidth/2)*nz - zspan )!=0 )
@@ -144,10 +144,13 @@ namespace larcv {
     if ( !_randomize_crops ) {
       // crop in lattice pattern through detector
       LARCV_DEBUG() << "Lattice Crop" << std::endl;
+      LARCV_DEBUG() << "dtickimg=" << dtickimg << std::endl;
+      LARCV_DEBUG() << "dtick=" << dtick << std::endl;
+      LARCV_DEBUG() << "tstep=" << tstep << std::endl;            
       LARCV_DEBUG() << "nt,nz: " << nt  << " " << nz << std::endl;
       LARCV_DEBUG() << "start (z,t): (" << zstart << ", " << startt << ")" << std::endl;
       
-      lattice.reserve( nt*nz );
+      lattice.reserve( (nt+1)*(nz+1) );
       
       for (int it=0; it<=nt; it++) {
 	
@@ -163,7 +166,7 @@ namespace larcv {
 	  
 	}
       }
-      std::cout << "Num lattice points: " << lattice.size() << std::endl;
+      LARCV_INFO() << "Full Image split into " << lattice.size() << " subimages" << std::endl;
     }
     else {
       // random cropping
@@ -183,7 +186,7 @@ namespace larcv {
 								   img_v );
 	lattice.emplace_back( std::move(crop_coords) );
       }
-      //std::cout << "Num of randomized cropping points generated: " << lattice.size() << std::endl;
+      LARCV_INFO() << "Num of randomized cropping points generated: " << lattice.size() << std::endl;
     }
 
     // debug
@@ -221,7 +224,7 @@ namespace larcv {
 	filledimg = cropUsingBBox2D( bbox_vec, img_v, y1, y2, _complete_y_crop, _randomize_minfracpix, *output_imgs );
       }
 
-      if ( filledimg ) {
+      if ( filledimg || !_enable_img_crop ) {
 	nfilled ++;
 	for ( auto &bbox : bbox_vec ) {
 	  output_bbox->emplace_back( std::move(bbox) );
@@ -316,7 +319,7 @@ namespace larcv {
     larcv::BBox2D bbox_v( minv, mint, maxv, maxt, img_v[1].meta().id() );
 
     // prepare the y-plane
-    // we take the narrow range and try to put it in the center of the y-plane image
+    // we take the narrow range and try to put it in the center of the full y-plane image
     const larcv::ImageMeta& ymeta = img_v[2].meta();
     int ycenter = (y1+y2)/2;
     int ycmin   = ycenter - (int)metacropu.cols()/2;
@@ -327,15 +330,13 @@ namespace larcv {
       miny = ymeta.pos_x( ycmin );
       maxy = ymeta.pos_x( ycmax );
     }
-    if ( ycmin<0 ) {
-      float pw = ymeta.pixel_width();
-      int diffy = ycmax-ycmin;
-      maxy = ymeta.pos_x( ycmax );
-      miny = maxy - float(diffy)*pw;
+    else if ( ycmin<ymeta.min_x() ) {
+      miny = ymeta.min_x();
+      maxy = ymeta.pos_x( 0+metacropu.cols() );
     }
-    if ( ycmax>(int)ymeta.cols() ) {
-      miny = ymeta.pos_x( ycmin );
-      maxy = miny + (ycmax-ycmin)*ymeta.pixel_width();
+    else if ( ycmax>=(int)ymeta.cols() ) {
+      maxy = ymeta.max_x()-1;
+      miny = ymeta.pos_x( ymeta.cols()-metacropu.cols()-1 );
     }
     larcv::ImageMeta crop_yp( miny, mint, maxy, maxt,
 			      (maxt-mint)/ymeta.pixel_height(),
@@ -450,13 +451,24 @@ namespace larcv {
   std::vector<int> UBSplitDetector::defineImageBoundsFromPosZT( const float zwire, const float tmid, const float zwidth, const float dtick,
 								const int box_pixel_width, const int box_pixel_height,
 								const std::vector<larcv::Image2D>& img_v ) {
+
+    // zwidth will be smaller than image size. that is because we are specificying range where we have complete overlap with U,V
+    // however, we will expand around this region, filling edges of Y image with information
+    
     const larcv::ImageMeta& meta = img_v.front().meta();
     const larutil::Geometry* geo       = larutil::Geometry::GetME();
     
     float t1 = tmid-0.5*dtick;
     float t2 = tmid+0.5*dtick;
-    int r1 = meta.row( t1 );
-    int r2 = meta.row( t2 );
+    int r1,r2;
+    try {
+      r1 = meta.row( t1 );
+      r2 = meta.row( t2 );
+    }
+    catch ( const std::exception& e ) {
+      std::cout << "tick bounds outside image. t1=" << t1 << " t2=" << t2 << ". min_t=" << meta.min_y() << " max_t=" << meta.max_y() << std::endl;
+      throw e;
+    }
 
     // fix tick bounds
     if ( r2-r1!=box_pixel_height ) {
@@ -475,10 +487,22 @@ namespace larcv {
     // set z range
     int zcol0 = zwire - zwidth/2;
     int zcol1 = zwire + zwidth/2;
-    
-    if ( zcol1>3455 )
-      zcol1 = 3455;
 
+    if ( zcol1>3455 ) {
+      std::stringstream ss;
+      ss << __PRETTY_FUNCTION__ << ":" << __FILE__ << "." << __LINE__ << ": zcol1 extends beyond the image boundary?" << std::endl;
+      throw std::runtime_error( ss.str() );
+      zcol0 -= (zcol1-3455);
+      zcol1 = 3455;
+    }
+    
+    if ( zcol0 < meta.min_x() || zcol1 >= meta.max_x() ) {
+      std::stringstream ss;
+      ss << "Y wire bounds outside image. z1=" << zcol0 << " z2=" << zcol1 << "."
+	 << "min_z=" << meta.min_x() << " max_z=" << meta.max_x() << std::endl;
+      throw std::runtime_error( ss.str() );
+    }
+    
     
     // determine range for u-plane
     Double_t xyzStart[3];
@@ -504,7 +528,7 @@ namespace larcv {
       ucol0 = 0;
     }
 	
-    // must fit in _box_pixe_width
+    // must fit in _box_pixel_width
     int ddu = ucol1-ucol0;
     int rdu = box_pixel_width%ddu;
     int ndu = ddu/box_pixel_width;
@@ -559,11 +583,11 @@ namespace larcv {
     }
     
 	
-    // LARCV_DEBUG() << "Crop: z=[" << z0 << "," << z1 << "] zcol=[" << zcol0 << "," << zcol1 << "] "
-    // 		   << "u=[" << ucol0 << "," << ucol1 << "] du=" << ucol1-ucol0 << " "
-    // 		   << "v=[" << vcol0 << "," << vcol1 << "] dv=" << vcol1-vcol0 << " "
-    // 		   << "t=[" << r1 << "," << r2 << "]"
-    // 		   << std::endl;
+    std::cout << "Pos(Z,T)=(" << zwire << "," << tmid << ") => Crop z=[" << z0 << "," << z1 << "] zcol=[" << zcol0 << "," << zcol1 << "] "
+	      << "u=[" << ucol0 << "," << ucol1 << "] du=" << ucol1-ucol0 << " "
+	      << "v=[" << vcol0 << "," << vcol1 << "] dv=" << vcol1-vcol0 << " "
+	      << "t=[" << r1 << "," << r2 << "]"
+	      << std::endl;
 
     std::vector<int> crop_coords(8);
     crop_coords[0] = zcol0;
