@@ -136,6 +136,16 @@ namespace larcv {
       throw larbys("Not enough pixel in source!");
   }
 
+  void Image2D::copy_region( size_t dest_row_start, size_t dest_col_start, size_t src_row_start, size_t nrows, size_t src_col_start, size_t ncols, const larcv::Image2D& src ) {
+
+    for (size_t r=0; r<nrows; r++) {
+      for (size_t c=0; c<ncols; c++) {
+	set_pixel( dest_row_start+r, dest_col_start+c, src.pixel(src_row_start+r,src_col_start+c) );
+      }
+    }
+    
+  }
+
   void Image2D::reverse_copy(size_t row, size_t col, const std::vector<float>& src, size_t nskip, size_t num_pixel)
   {
     size_t idx = 0;
