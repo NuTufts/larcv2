@@ -13,6 +13,7 @@
 
 #pragma link C++ class larcv::UBSplitDetector+;
 #pragma link C++ class larcv::UBCropLArFlow+;
+#pragma link C++ class larcv::UBLArFlowStitcher+;
 
 //ADD_NEW_CLASS ... do not change this line
 #endif

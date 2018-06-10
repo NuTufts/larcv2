@@ -16,8 +16,8 @@
 /** \addtogroup UBImageMod
 
     @{*/
-#ifndef __UBCROPLARFLOW_H__
-#define __UBCROPLARFLOW_H__
+#ifndef __UBLARFLOWSTITCHER_H__
+#define __UBLARFLOWSTITCHER_H__
 
 #include "larcv/core/DataFormat/ImageMeta.h"
 #include "larcv/core/Processor/ProcessBase.h"
@@ -47,8 +47,26 @@ namespace larcv {
     bool process(IOManager& mgr);
 
     void finalize();
+
+    void setupEvent( const std::vector<larcv::Image2D>& src_adc_v );
+    void insertFlowSubimage( const larcv::Image2D& flow_predict, const larcv::ImageMeta& flow_target );
     
-  }
+
+  protected:
+
+    bool _output_initialized;
+    int  _verbosity;
+    std::string _output_flo_y2u_producer;
+    std::string _output_vis_y2u_producer;
+    
+    std::vector< larcv::Image2D > _output_y2u; // [0] flow, [1] visi
+    const std::vector<larcv::Image2D>* _psrc_adc_v; // pointer to source ADC image
+
+    void setInputImage( const std::vector<larcv::Image2D>& src_adc_v );    
+    void initializeOutput( const std::vector<larcv::Image2D>& img_v ); // set the output image size
+    void clearOutput();
+    
+  };
 
 
   /**

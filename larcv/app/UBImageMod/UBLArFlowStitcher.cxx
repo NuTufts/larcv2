@@ -23,47 +23,19 @@ namespace larcv {
   
   UBLArFlowStitcher::UBLArFlowStitcher(const std::string name)
     : ProcessBase(name)
-  {}
+  {
+    _output_initialized = false;
+    _psrc_adc_v = NULL;
+    _verbosity = 2;
+    _output_flo_y2u_producer = "larflow_y2u";
+    _output_vis_y2u_producer = "larvisi_y2u";
+  }
 
   void UBLArFlowStitcher::configure(const PSet& cfg)
   {
-
-    // _verbosity_             = cfg.get<int>("Verbosity");
-    // _input_bbox_producer    = cfg.get<std::string>("InputBBoxProducer");
-    // _input_adc_producer     = cfg.get<std::string>("InputADCProducer");
-    // _input_cropped_producer = cfg.get<std::string>("InputCroppedADCProducer");
-    // _input_vis_producer     = cfg.get<std::string>("InputVisiProducer");
-    // _input_flo_producer     = cfg.get<std::string>("InputFlowProducer");
-    // _output_adc_producer    = cfg.get<std::string>("OutputCroppedADCProducer");
-    // _output_vis_producer    = cfg.get<std::string>("OutputCroppedVisiProducer");
-    // _output_flo_producer    = cfg.get<std::string>("OutputCroppedFlowProducer");
-    // _output_meta_producer   = cfg.get<std::string>("OutputCroppedMetaProducer");    
-    // _output_filename        = cfg.get<std::string>("OutputFilename");
-
-    // _max_images             = cfg.get<int>("MaxImages",-1);
-    // _thresholds_v           = cfg.get< std::vector<float> >("Thresholds",std::vector<float>(3,10.0) );
-
-    // // Max pooling. Shrink image by some downsampling factor. must be factor of image size.
-    // _do_maxpool             = cfg.get<bool>("DoMaxPool",false);
-    // if (_do_maxpool) {
-    //   _row_downsample_factor  = cfg.get<int>("RowDownsampleFactor");
-    //   _col_downsample_factor  = cfg.get<int>("ColDownsampleFactor");
-    // }
-    // else {
-    //   _row_downsample_factor = -1;
-    //   _col_downsample_factor = -1;
-    // }
-
-    // // sparsity requirement: prevent cropping over the same regions
-    // _limit_overlap        = cfg.get<bool>("LimitOverlap",false);
-    // _max_overlap_fraction = cfg.get<float>("MaxOverlapFraction", 0.5 );
-
-    // // debug options
-    // _check_flow             = cfg.get<bool>("CheckFlow",false);      // output to screen, checks of cropped images
-    // _make_check_image       = cfg.get<bool>("MakeCheckImage",false); // dump png of image checks
-    // if ( _make_check_image )
-    //   gStyle->SetOptStat(0);
-          
+    _verbosity               = cfg.get<int>("Verbosity",2);
+    _output_flo_y2u_producer = cfg.get<std::string>("OutputY2UFlowProducer","larflow_y2u");
+    _output_vis_y2u_producer = cfg.get<std::string>("OutputY2UVisiProducer","larvisi_y2u");
   }
 
   void UBLArFlowStitcher::initialize()
@@ -71,45 +43,119 @@ namespace larcv {
 
   bool UBLArFlowStitcher::process(IOManager& mgr)
   {
-    // we split the full detector image into 3D subpieces
+    // we simply save the output image
 
-    // ---------------------------------------------------------------
-    // get data
+    // output flo
+    auto ev_out_flo_y2u  = (larcv::EventImage2D*)(mgr.get_data("image2d", _output_flo_y2u_producer));
+    auto ev_out_vis_y2u  = (larcv::EventImage2D*)(mgr.get_data("image2d", _output_vis_y2u_producer));    
 
-    // // input ADC
-    // auto ev_in_adc  = (larcv::EventImage2D*)(mgr.get_data("image2d", _input_adc_producer));
-    // if (!ev_in_adc) {
-    //   LARCV_CRITICAL() << "No Input ADC Image2D found with a name: " << _input_adc_producer << std::endl;
-    //   throw larbys();
-    // }
-    // const std::vector< larcv::Image2D >& img_v = ev_in_adc->image2d_array();
-
-    // // input visibility/matchability
-    // auto ev_in_vis  = (larcv::EventImage2D*)(mgr.get_data("image2d", _input_vis_producer));
-    // if (!ev_in_vis) {
-    //   LARCV_CRITICAL() << "No Input VIS Image2D found with a name: " << _input_vis_producer << std::endl;
-    //   throw larbys();
-    // }
-    // const std::vector< larcv::Image2D >& vis_v = ev_in_vis->image2d_array();
-
-    // // input flo
-    // auto ev_in_flo  = (larcv::EventImage2D*)(mgr.get_data("image2d", _input_flo_producer));
-    // if (!ev_in_flo) {
-    //   LARCV_CRITICAL() << "No Input flo Image2D found with a name: " << _input_flo_producer << std::endl;
-    //   throw larbys();
-    // }
-    // const std::vector< larcv::Image2D >& flo_v = ev_in_flo->image2d_array();
-
-    // // output BBox
-    // auto ev_in_bbox  = (larcv::EventImage2D*)(mgr.get_data("bbox2d", _input_bbox_producer));
-    // if (!ev_in_bbox) {
-    //   LARCV_CRITICAL() << "No Input BBox2D found with a name: " << _input_bbox_producer << std::endl;
-    //   throw larbys();
-    // }
+    ev_out_flo_y2u->emplace( std::move(_output_y2u[2]) );    // follow first in u-plane pos
+    ev_out_flo_y2u->emplace( std::move(_output_y2u[0]) );    // flow prediction in y-plane pos
+    
+    ev_out_vis_y2u->emplace( std::move(_output_y2u[1]) );
+    
+    _output_initialized = false; // reset
     
     return true;
   }
-  
+
+  void UBLArFlowStitcher::initializeOutput( const std::vector<larcv::Image2D>& src_adc_v ) {
+
+    // clear output
+    if ( !_output_y2u.empty() ) {
+      _output_y2u.clear();
+    }
+
+    // Y2U flow
+    larcv::Image2D y2u_flow( src_adc_v.at(2).meta() );    // flow prediction, back in whole-image space
+    larcv::Image2D y2u_visi( src_adc_v.at(2).meta() );    // visibility, in whole-image space
+    larcv::Image2D y2u_follow( src_adc_v.at(0).meta() );  // follow the flow (ideally creates image similar to u-plane adc image)
+    larcv::Image2D y2u_trusted( src_adc_v.at(0).meta() ); // marked if filled by trusted region (center of yimage where u/v overlap by construction)
+    _output_y2u.emplace_back( std::move(y2u_flow) );
+    _output_y2u.emplace_back( std::move(y2u_visi) );
+    _output_y2u.emplace_back( std::move(y2u_follow) );
+    _output_y2u.emplace_back( std::move(y2u_trusted) );    
+
+    _output_initialized = true;
+  }
+
+  void UBLArFlowStitcher::setInputImage( const std::vector<larcv::Image2D>& src_adc_v ) {
+
+    // save pointer to source adc
+    _psrc_adc_v = &src_adc_v;
+
+  };
+    
+  void UBLArFlowStitcher::clearOutput() {
+    for ( auto& img : _output_y2u )
+      img.paint(0.0);
+  }
+
+  void UBLArFlowStitcher::setupEvent( const std::vector<larcv::Image2D>& src_adc_v ) {
+    if ( !_output_initialized )
+      initializeOutput( src_adc_v );
+
+    clearOutput();
+    setInputImage( src_adc_v );
+  }
+
+  void UBLArFlowStitcher::insertFlowSubimage( const larcv::Image2D& flow_predict, const larcv::ImageMeta& tar_meta ) {
+
+    // flow_predict: larflow scores, in the y-image. a subimage of output_y2u
+    // flow_target:  the u-plane adc image.
+
+    if ( !_output_initialized ) {
+      throw std::runtime_error( "output not yet initialized. call setupEvent( const std::vector<larcv::Image2D>& ) for each event first." );
+    }
+    // add check for event number
+
+    larcv::Image2D& out_flow = _output_y2u[0];
+    larcv::Image2D& out_visi = _output_y2u[1];
+    larcv::Image2D& out_follow = _output_y2u[2];
+    larcv::Image2D& out_trust  = _output_y2u[3];        
+    const larcv::ImageMeta& out_meta = out_flow.meta();
+    
+    int src_min_c = out_meta.col( flow_predict.meta().min_x() );
+    int src_min_r = out_meta.row( flow_predict.meta().min_y() );
+    
+    for ( int r=0; r<(int)flow_predict.meta().rows(); r++ ) {
+      for ( int c=0; c<(int)flow_predict.meta().cols(); c++ ) {
+
+	int src_c = src_min_c+c;
+	int src_r = src_min_r+r;
+	float src_adc = _psrc_adc_v->at(2).pixel(src_r,src_c);
+	
+	if ( src_adc<10.0 )
+	  continue;
+
+	if ( out_trust.pixel(src_r,src_c)>0 )
+	  continue; // already filled by trusted region
+	
+	int flo = std::round(flow_predict.pixel(r,c)); // prediction
+	// std::cout << "src(r,c)=(" << src_r << "," << src_c << ") adc=" << _psrc_adc_v->at(2).pixel(src_r,src_c) << " "
+	// 	  << "flowsub(r,c)=(" << r << "," << c << ") "
+	// 	  << "flo=" << flo
+	// 	  << std::endl;
+	
+	int tar_col = c+flo; // target column
+	if ( tar_col>(int)tar_meta.cols() || tar_col<0 ) {
+	  //std::cout << "  flo out of bounds. target col=" << tar_col << std::endl;
+	  continue;
+	}
+	
+	float tar_wire = tar_meta.pos_x( tar_col ); // target wire
+	int out_col = out_meta.col( tar_wire ); // column in output image
+	
+	float final_flow = out_col-src_c; // output flow
+	//std::cout << "  ok value. target_wire=" << tar_wire << " final_flow=" << final_flow << std::endl;
+	out_flow.set_pixel( src_r, src_c, final_flow );
+	out_follow.set_pixel( src_r, out_col, src_adc );
+	if ( c>=261 || c<=571 )
+	  out_trust.set_pixel( src_r, src_c, 1.0 );	
+      }
+    }
+    
+  }
   
   void UBLArFlowStitcher::finalize()
   {
