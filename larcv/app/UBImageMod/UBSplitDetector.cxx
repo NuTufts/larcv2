@@ -238,8 +238,7 @@ namespace larcv {
 
     LARCV_DEBUG() << "Number of cropped images: " << output_imgs->image2d_array().size() << std::endl;
     LARCV_DEBUG() << "Number of cropped images per plane: " << output_imgs->image2d_array().size()/3 << std::endl;
-    //LARCV_INFO()  << "BBoxes gen'ed=" << lattice.size() << " filled=" << nfilled << " rejected=" << nrejected << std::endl;
-    std::cout  << "BBoxes gen'ed=" << lattice.size() << " filled=" << nfilled << " rejected=" << nrejected << std::endl;    
+    LARCV_INFO()  << "BBoxes gen'ed=" << lattice.size() << " filled=" << nfilled << " rejected=" << nrejected << std::endl;
 
     // if ( _debug_img ) {
     //   auto outev_coverage = (larcv::EventImage2D*)(mgr.get_data("image2d", "coverage"));
@@ -583,11 +582,11 @@ namespace larcv {
     }
     
 	
-    std::cout << "Pos(Z,T)=(" << zwire << "," << tmid << ") => Crop z=[" << z0 << "," << z1 << "] zcol=[" << zcol0 << "," << zcol1 << "] "
-	      << "u=[" << ucol0 << "," << ucol1 << "] du=" << ucol1-ucol0 << " "
-	      << "v=[" << vcol0 << "," << vcol1 << "] dv=" << vcol1-vcol0 << " "
-	      << "t=[" << r1 << "," << r2 << "]"
-	      << std::endl;
+    // std::cout << "Pos(Z,T)=(" << zwire << "," << tmid << ") => Crop z=[" << z0 << "," << z1 << "] zcol=[" << zcol0 << "," << zcol1 << "] "
+    // 	      << "u=[" << ucol0 << "," << ucol1 << "] du=" << ucol1-ucol0 << " "
+    // 	      << "v=[" << vcol0 << "," << vcol1 << "] dv=" << vcol1-vcol0 << " "
+    // 	      << "t=[" << r1 << "," << r2 << "]"
+    // 	      << std::endl;
 
     std::vector<int> crop_coords(8);
     crop_coords[0] = zcol0;
