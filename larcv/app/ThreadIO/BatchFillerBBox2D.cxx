@@ -6,6 +6,8 @@
 #include "larcv/core/DataFormat/EventBBox.h"
 #include <random>
 #include <array>
+#include <sstream>
+#include <exception>
 
 namespace larcv {
 
@@ -22,6 +24,19 @@ namespace larcv {
     _convert_xy_to_pix = cfg.get<bool>("ConvertXYtoPixel",false);
     _imageproducer = cfg.get<std::string>("ImageProducerForMeta","");
     _maxboxes = cfg.get<int>("MaxNumBoxes");
+    _include_class = cfg.get<bool>("IncludeClass",true); // includes class index as last entry in array
+    std::string format = cfg.get<std::string>("Format","MinMax");
+
+    if (format=="MinMax")
+      _format = kMinMax;
+    else if (format=="Center")
+      _format = kCenter;
+    else {
+      std::stringstream ss;
+      ss << __FILE__ << ":" << __LINE__ << "::" << __FUNCTION__ << ":: 'Format' parameter must be either 'MinMax' or 'Center'" << std::endl;
+      throw std::runtime_error( ss.str() );      
+    }
+      
   }
 
   void BatchFillerBBox2D::initialize()
@@ -37,7 +52,10 @@ namespace larcv {
       this->set_dim(dim);
     }
 
-    _entry_data.resize(batch_size()*4*_maxboxes,0);    
+    if ( _include_class )
+      _entry_data.resize(batch_size()*5*_maxboxes,0);
+    else
+      _entry_data.resize(batch_size()*4*_maxboxes,0);
   }
 
   void BatchFillerBBox2D::_batch_end_()
@@ -80,7 +98,7 @@ namespace larcv {
 
     // if slow, one thing to try is to allocate this only once
     // by keeping as member data
-    std::vector< std::array<float,4> > tempstore;
+    std::vector< std::array<float,5> > tempstore;
     tempstore.reserve( event_bbox2d.size() );
 
     for ( auto const& bbox2d : event_bbox2d ) {
@@ -89,17 +107,31 @@ namespace larcv {
       
       const ImageMeta* pmeta = meta_v[bbox2d.id()];
       
-      std::array<float,4> xybh;
+      std::array<float,5> xybh;
       xybh[0] = bbox2d.center_x();
       xybh[1] = bbox2d.center_y();
-      xybh[2] = 0.5*bbox2d.width();
-      xybh[3] = 0.5*bbox2d.height();
+      xybh[2] = bbox2d.width();
+      xybh[3] = bbox2d.height();
+      xybh[4] = 0;      
+      if ( _include_class )
+	xybh[4] = 1;
 
       if  (_convert_xy_to_pix ) {
 	xybh[0] = pmeta->col( xybh[0] );
 	xybh[1] = pmeta->row( xybh[1] );
 	xybh[2] /= pmeta->pixel_width();
 	xybh[3] /= pmeta->pixel_height();
+      }
+
+      if ( _format==kMinMax ) {
+	float x_min = xybh[0]-0.5*xybh[2];
+	float y_min = xybh[1]-0.5*xybh[3];
+	float x_max = xybh[0]+0.5*xybh[2];
+	float y_max = xybh[1]+0.5*xybh[3];
+	xybh[0] = x_min;
+	xybh[1] = y_min;
+	xybh[2] = x_max;
+	xybh[3] = y_max;
       }
       
       tempstore.push_back( xybh );
@@ -116,16 +148,30 @@ namespace larcv {
       dim[0] = batch_size();
       dim[1] = _maxboxes;
       dim[2] = 1;
-      dim[3] = 4;
+      if ( _include_class )
+	dim[3] = 5;
+      else
+	dim[3] = 4;
+      
       this->set_dim(dim);
     }
-    _entry_data.resize(4*_maxboxes,0);
+    int stride = 5;
+    if ( _include_class )  {
+      _entry_data.resize(5*_maxboxes,0);
+      stride = 5;
+    }
+    else {
+      _entry_data.resize(4*_maxboxes,0);
+      stride = 4;
+    }
     for (auto& v : _entry_data) v = 0.;
 	  
     for ( int ibox=0; ibox<nboxes; ibox++ ) {
       auto& bbox2d = tempstore[ibox];
       for (int i=0; i<4; i++) 
-	_entry_data[4*ibox+i] = bbox2d[i];
+	_entry_data[stride*ibox+i] = bbox2d[i];
+      if (_include_class)
+	_entry_data[stride*ibox+4] = bbox2d[4];
     }
     this->set_entry_data(_entry_data);
 
