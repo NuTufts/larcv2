@@ -66,11 +66,19 @@ namespace larcv {
     _make_check_image       = cfg.get<bool>("MakeCheckImage",false); // dump png of image checks
     if ( _make_check_image )
       gStyle->SetOptStat(0);
-      
+
+    // save output
+    _save_output = cfg.get<bool>("SaveOutput");
+    
     // output file
-    foutIO = new larcv::IOManager( larcv::IOManager::kWRITE );
-    foutIO->set_out_file( _output_filename );
-    foutIO->initialize();
+    if ( _save_output ) {
+      foutIO = new larcv::IOManager( larcv::IOManager::kWRITE );
+      foutIO->set_out_file( _output_filename );
+      foutIO->initialize();
+    }
+    else {
+      foutIO = NULL;
+    }
     
   }
 
@@ -127,16 +135,25 @@ namespace larcv {
     // ----------------------------------------------------------------
 
     // Output ADC containers
-    larcv::EventImage2D* ev_out_adc  = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_adc_producer);
-    larcv::EventImage2D* ev_vis_adc  = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_vis_producer);
-    larcv::EventImage2D* ev_flo_adc  = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_flo_producer);
-    ev_out_adc->clear();
-    ev_vis_adc->clear();
-    ev_flo_adc->clear();
+    larcv::EventImage2D* ev_out_adc  = NULL;
+    larcv::EventImage2D* ev_vis_adc  = NULL;
+    larcv::EventImage2D* ev_flo_adc  = NULL;
+
+    if ( _save_output ) {
+      ev_out_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_adc_producer);
+      ev_vis_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_vis_producer);
+      ev_flo_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_flo_producer);
+      ev_out_adc->clear();
+      ev_vis_adc->clear();
+      ev_flo_adc->clear();
+    }
 
     // Output Meta containers
-    larcv::EventMeta*    ev_meta     = (larcv::EventMeta*)foutIO->get_data("meta",_output_meta_producer);
-    ev_meta->clear();
+    larcv::EventMeta*    ev_meta     = NULL;
+    if ( _save_output ) {
+      ev_meta = (larcv::EventMeta*)foutIO->get_data("meta",_output_meta_producer);
+      ev_meta->clear();
+    }
     
     // ----------------------------------------------------------------
 
@@ -226,26 +243,28 @@ namespace larcv {
 	    }
 	  }
 	}
-	
-	ev_out_adc->emplace( std::move(crop_v) );
-	ev_vis_adc->emplace( std::move(cropped_visi) );
-	ev_flo_adc->emplace( std::move(cropped_flow) );
 
-	// save meta
-	ev_meta->store("nabove",int(check_results[0]));
-	std::vector<int> nvis_v(2);
-	nvis_v[0] = int(check_results[1]);
-	nvis_v[1] = int(check_results[2]);
-	ev_meta->store("nvis",nvis_v);
-	std::vector<double> ncorrect_v(2);
-	ncorrect_v[0] = check_results[3];
-	ncorrect_v[1] = check_results[4];
-	ev_meta->store("ncorrect",ncorrect_v);
-      
-	foutIO->set_id( run, subrun, 100*event+icrop );
-	foutIO->save_entry();
+	if ( _save_output ) {
+	  ev_out_adc->emplace( std::move(crop_v) );
+	  ev_vis_adc->emplace( std::move(cropped_visi) );
+	  ev_flo_adc->emplace( std::move(cropped_flow) );
+	  
+	  // save meta
+	  ev_meta->store("nabove",int(check_results[0]));
+	  std::vector<int> nvis_v(2);
+	  nvis_v[0] = int(check_results[1]);
+	  nvis_v[1] = int(check_results[2]);
+	  ev_meta->store("nvis",nvis_v);
+	  std::vector<double> ncorrect_v(2);
+	  ncorrect_v[0] = check_results[3];
+	  ncorrect_v[1] = check_results[4];
+	  ev_meta->store("ncorrect",ncorrect_v);
+
+	  foutIO->set_id( run, subrun, 100*event+icrop );
+	  foutIO->save_entry();
+	}
 	nsaved++;
-      }
+      }//end of if passes_check_fiter
 
       if ( _max_images>0 && nsaved>=_max_images )
 	break;
@@ -688,7 +707,8 @@ namespace larcv {
   
   void UBCropLArFlow::finalize()
   {
-    foutIO->finalize();
+    if ( _save_output )
+      foutIO->finalize();
   }
 
   void UBCropLArFlow::maxPool( const int row_downsample_factor, const int col_downsample_factor,
