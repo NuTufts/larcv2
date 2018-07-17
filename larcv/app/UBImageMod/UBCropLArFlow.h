@@ -111,6 +111,7 @@ namespace larcv {
     int   _row_downsample_factor;
     int   _col_downsample_factor;
     bool  _limit_overlap;
+    bool  _require_min_goodpixels;
     float _max_overlap_fraction;
     int   _verbosity_;
     bool  _save_output;

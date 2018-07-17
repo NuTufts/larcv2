@@ -57,6 +57,9 @@ namespace larcv {
       _col_downsample_factor = -1;
     }
 
+    // minimum pixel requirements
+    _require_min_goodpixels = cfg.get<bool>("RequireMinGoodPixels");
+    
     // sparsity requirement: prevent cropping over the same regions
     _limit_overlap        = cfg.get<bool>("LimitOverlap",false);
     _max_overlap_fraction = cfg.get<float>("MaxOverlapFraction", 0.5 );
@@ -143,17 +146,25 @@ namespace larcv {
       ev_out_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_adc_producer);
       ev_vis_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_vis_producer);
       ev_flo_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_flo_producer);
-      ev_out_adc->clear();
-      ev_vis_adc->clear();
-      ev_flo_adc->clear();
     }
-
+    else {
+      ev_out_adc = (larcv::EventImage2D*)mgr.get_data("image2d",_output_adc_producer);
+      ev_vis_adc = (larcv::EventImage2D*)mgr.get_data("image2d",_output_vis_producer);
+      ev_flo_adc = (larcv::EventImage2D*)mgr.get_data("image2d",_output_flo_producer);
+    }
+    ev_out_adc->clear();
+    ev_vis_adc->clear();
+    ev_flo_adc->clear();
+    
     // Output Meta containers
-    larcv::EventMeta*    ev_meta     = NULL;
+    larcv::EventMeta* ev_meta = NULL;
     if ( _save_output ) {
       ev_meta = (larcv::EventMeta*)foutIO->get_data("meta",_output_meta_producer);
-      ev_meta->clear();
     }
+    else {
+      ev_meta = (larcv::EventMeta*)mgr.get_data("meta",_output_meta_producer);      
+    }
+    ev_meta->clear();    
     
     // ----------------------------------------------------------------
 
@@ -167,6 +178,7 @@ namespace larcv {
     const larcv::ImageMeta& src_meta = img_v[2].meta();
     int ncrops = cropped_v.size()/3;
     int nsaved = 0;
+    //std::cout << "UBCropLArFlow processing " << ncrops << " input crops" << std::endl;
 
     std::vector<larcv::Image2D> overlap_img; // store an image used to keep track of previously cropped pixels
     if ( _limit_overlap ) {
@@ -200,10 +212,11 @@ namespace larcv {
 	  LARCV_NORMAL() << "Skipping overlapping image. Frac overlap=" << frac_overlap << "." << std::endl;
 	  continue;
 	}
-	std::cout << "Overlap fraction: " << frac_overlap << std::endl;
+	//std::cout << "Overlap fraction: " << frac_overlap << std::endl;
       }
       
       LARCV_DEBUG() << "Start crop of Flow and Visibility images of image #" << icrop << std::endl;
+      //std::cout << "Start crop of Flow and Visibility images of image #" << icrop << std::endl;
       std::vector<larcv::Image2D> cropped_flow;
       std::vector<larcv::Image2D> cropped_visi;
       make_cropped_flow_images( src_plane, src_meta,
@@ -229,7 +242,7 @@ namespace larcv {
 	}
       }
 
-      if ( passes_check_filter ) {
+      if ( passes_check_filter || !_require_min_goodpixels ) {
 
 
 	// if we are limiting overlaps, we need to mark overlap image
@@ -244,22 +257,34 @@ namespace larcv {
 	  }
 	}
 
+	//LARCV_DEBUG() << "Store LArFlow Crop" << std::endl;
 	if ( _save_output ) {
 	  ev_out_adc->emplace( std::move(crop_v) );
 	  ev_vis_adc->emplace( std::move(cropped_visi) );
 	  ev_flo_adc->emplace( std::move(cropped_flow) );
-	  
-	  // save meta
-	  ev_meta->store("nabove",int(check_results[0]));
-	  std::vector<int> nvis_v(2);
-	  nvis_v[0] = int(check_results[1]);
-	  nvis_v[1] = int(check_results[2]);
-	  ev_meta->store("nvis",nvis_v);
-	  std::vector<double> ncorrect_v(2);
-	  ncorrect_v[0] = check_results[3];
-	  ncorrect_v[1] = check_results[4];
-	  ev_meta->store("ncorrect",ncorrect_v);
-
+	}
+	else {
+	  for ( auto& img : crop_v )
+	    ev_out_adc->emplace( std::move(img) );
+	  for ( auto& img : cropped_visi )
+	    ev_vis_adc->emplace( std::move(img) );
+	  for ( auto& img : cropped_flow )
+	    ev_flo_adc->emplace( std::move(img) );
+	}
+	//std::cout << "Store LArFlow Crops (nstored=" << ev_out_adc->image2d_array().size() << ")" << std::endl;
+	
+	// save meta
+	ev_meta->store("nabove",int(check_results[0]));
+	std::vector<int> nvis_v(2);
+	nvis_v[0] = int(check_results[1]);
+	nvis_v[1] = int(check_results[2]);
+	ev_meta->store("nvis",nvis_v);
+	std::vector<double> ncorrect_v(2);
+	ncorrect_v[0] = check_results[3];
+	ncorrect_v[1] = check_results[4];
+	ev_meta->store("ncorrect",ncorrect_v);
+	
+	if ( _save_output ) {
 	  foutIO->set_id( run, subrun, 100*event+icrop );
 	  foutIO->save_entry();
 	}
