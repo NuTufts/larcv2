@@ -57,6 +57,9 @@ namespace larcv {
       _col_downsample_factor = -1;
     }
 
+    // minimum pixel requirements
+    _require_min_goodpixels = cfg.get<bool>("RequireMinGoodPixels");
+    
     // sparsity requirement: prevent cropping over the same regions
     _limit_overlap        = cfg.get<bool>("LimitOverlap",false);
     _max_overlap_fraction = cfg.get<float>("MaxOverlapFraction", 0.5 );
@@ -66,11 +69,19 @@ namespace larcv {
     _make_check_image       = cfg.get<bool>("MakeCheckImage",false); // dump png of image checks
     if ( _make_check_image )
       gStyle->SetOptStat(0);
-      
+
+    // save output
+    _save_output = cfg.get<bool>("SaveOutput");
+    
     // output file
-    foutIO = new larcv::IOManager( larcv::IOManager::kWRITE );
-    foutIO->set_out_file( _output_filename );
-    foutIO->initialize();
+    if ( _save_output ) {
+      foutIO = new larcv::IOManager( larcv::IOManager::kWRITE );
+      foutIO->set_out_file( _output_filename );
+      foutIO->initialize();
+    }
+    else {
+      foutIO = NULL;
+    }
     
   }
 
@@ -127,16 +138,33 @@ namespace larcv {
     // ----------------------------------------------------------------
 
     // Output ADC containers
-    larcv::EventImage2D* ev_out_adc  = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_adc_producer);
-    larcv::EventImage2D* ev_vis_adc  = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_vis_producer);
-    larcv::EventImage2D* ev_flo_adc  = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_flo_producer);
+    larcv::EventImage2D* ev_out_adc  = NULL;
+    larcv::EventImage2D* ev_vis_adc  = NULL;
+    larcv::EventImage2D* ev_flo_adc  = NULL;
+
+    if ( _save_output ) {
+      ev_out_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_adc_producer);
+      ev_vis_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_vis_producer);
+      ev_flo_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_flo_producer);
+    }
+    else {
+      ev_out_adc = (larcv::EventImage2D*)mgr.get_data("image2d",_output_adc_producer);
+      ev_vis_adc = (larcv::EventImage2D*)mgr.get_data("image2d",_output_vis_producer);
+      ev_flo_adc = (larcv::EventImage2D*)mgr.get_data("image2d",_output_flo_producer);
+    }
     ev_out_adc->clear();
     ev_vis_adc->clear();
     ev_flo_adc->clear();
-
+    
     // Output Meta containers
-    larcv::EventMeta*    ev_meta     = (larcv::EventMeta*)foutIO->get_data("meta",_output_meta_producer);
-    ev_meta->clear();
+    larcv::EventMeta* ev_meta = NULL;
+    if ( _save_output ) {
+      ev_meta = (larcv::EventMeta*)foutIO->get_data("meta",_output_meta_producer);
+    }
+    else {
+      ev_meta = (larcv::EventMeta*)mgr.get_data("meta",_output_meta_producer);      
+    }
+    ev_meta->clear();    
     
     // ----------------------------------------------------------------
 
@@ -150,6 +178,7 @@ namespace larcv {
     const larcv::ImageMeta& src_meta = img_v[2].meta();
     int ncrops = cropped_v.size()/3;
     int nsaved = 0;
+    //std::cout << "UBCropLArFlow processing " << ncrops << " input crops" << std::endl;
 
     std::vector<larcv::Image2D> overlap_img; // store an image used to keep track of previously cropped pixels
     if ( _limit_overlap ) {
@@ -183,10 +212,11 @@ namespace larcv {
 	  LARCV_NORMAL() << "Skipping overlapping image. Frac overlap=" << frac_overlap << "." << std::endl;
 	  continue;
 	}
-	std::cout << "Overlap fraction: " << frac_overlap << std::endl;
+	//std::cout << "Overlap fraction: " << frac_overlap << std::endl;
       }
       
       LARCV_DEBUG() << "Start crop of Flow and Visibility images of image #" << icrop << std::endl;
+      //std::cout << "Start crop of Flow and Visibility images of image #" << icrop << std::endl;
       std::vector<larcv::Image2D> cropped_flow;
       std::vector<larcv::Image2D> cropped_visi;
       make_cropped_flow_images( src_plane, src_meta,
@@ -212,7 +242,7 @@ namespace larcv {
 	}
       }
 
-      if ( passes_check_filter ) {
+      if ( passes_check_filter || !_require_min_goodpixels ) {
 
 
 	// if we are limiting overlaps, we need to mark overlap image
@@ -226,11 +256,23 @@ namespace larcv {
 	    }
 	  }
 	}
-	
-	ev_out_adc->emplace( std::move(crop_v) );
-	ev_vis_adc->emplace( std::move(cropped_visi) );
-	ev_flo_adc->emplace( std::move(cropped_flow) );
 
+	//LARCV_DEBUG() << "Store LArFlow Crop" << std::endl;
+	if ( _save_output ) {
+	  ev_out_adc->emplace( std::move(crop_v) );
+	  ev_vis_adc->emplace( std::move(cropped_visi) );
+	  ev_flo_adc->emplace( std::move(cropped_flow) );
+	}
+	else {
+	  for ( auto& img : crop_v )
+	    ev_out_adc->emplace( std::move(img) );
+	  for ( auto& img : cropped_visi )
+	    ev_vis_adc->emplace( std::move(img) );
+	  for ( auto& img : cropped_flow )
+	    ev_flo_adc->emplace( std::move(img) );
+	}
+	//std::cout << "Store LArFlow Crops (nstored=" << ev_out_adc->image2d_array().size() << ")" << std::endl;
+	
 	// save meta
 	ev_meta->store("nabove",int(check_results[0]));
 	std::vector<int> nvis_v(2);
@@ -241,11 +283,13 @@ namespace larcv {
 	ncorrect_v[0] = check_results[3];
 	ncorrect_v[1] = check_results[4];
 	ev_meta->store("ncorrect",ncorrect_v);
-      
-	foutIO->set_id( run, subrun, 100*event+icrop );
-	foutIO->save_entry();
+	
+	if ( _save_output ) {
+	  foutIO->set_id( run, subrun, 100*event+icrop );
+	  foutIO->save_entry();
+	}
 	nsaved++;
-      }
+      }//end of if passes_check_fiter
 
       if ( _max_images>0 && nsaved>=_max_images )
 	break;
@@ -688,7 +732,8 @@ namespace larcv {
   
   void UBCropLArFlow::finalize()
   {
-    foutIO->finalize();
+    if ( _save_output )
+      foutIO->finalize();
   }
 
   void UBCropLArFlow::maxPool( const int row_downsample_factor, const int col_downsample_factor,

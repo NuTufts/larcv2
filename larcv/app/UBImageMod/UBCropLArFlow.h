@@ -103,16 +103,18 @@ namespace larcv {
     std::string _output_flo_producer;
     std::string _output_meta_producer;    
     std::string _output_filename;
-    int _max_images;
     std::vector<float> _thresholds_v;
-    bool _check_flow;
-    bool _make_check_image;
-    bool _do_maxpool;
-    int _row_downsample_factor;
-    int _col_downsample_factor;
-    bool _limit_overlap;
+    int   _max_images;    
+    bool  _check_flow;
+    bool  _make_check_image;
+    bool  _do_maxpool;
+    int   _row_downsample_factor;
+    int   _col_downsample_factor;
+    bool  _limit_overlap;
+    bool  _require_min_goodpixels;
     float _max_overlap_fraction;
-    int _verbosity_;
+    int   _verbosity_;
+    bool  _save_output;
 
 
     static int _check_img_counter;
