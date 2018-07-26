@@ -6,26 +6,31 @@ superafile = "larcv_062218.root"
 
 io = larcv.IOManager(larcv.IOManager.kBOTH)
 io.add_in_file( superafile )
-io.set_out_file( "baka.root" )
+io.set_out_file( "baka_infill.root" )
 io.initialize()
 
 # -------------------------------------
 # UBSplitDetector
 
 scfg="""Verbosity: 0
-InputProducer: \"Labels\"
+InputProducer: \"wire\"
+LabelsInput: \"Labels\"
+ADCInput: \"ADC\"
 OutputBBox2DProducer: \"detsplit\"
 CropInModule: true
-OutputCroppedProducer: \"detsplit\"
+OutputCroppedProducer: \"cwire\"
+OutputLabelsProducer: \"cLabels\"
+OutputADCProducer: \"cADC\"
+OutputWeightsProducer: \"cWeights\"
 BBoxPixelHeight: 512
 BBoxPixelWidth: 832
 CoveredZWidth: 310
 FillCroppedYImageCompletely: true
 DebugImage: false
-MaxImages: 5
+MaxImages: 10
 RandomizeCrops: true
 MaxRandomAttempts: 50
-MinFracPixelsInCrop: -0.0001
+MinFracPixelsInCrop: 0
 """
 
 fcfg = open("ubsplit.cfg",'w')
@@ -33,8 +38,8 @@ print >>fcfg,scfg
 fcfg.close()
 
 
-cfg = larcv.CreatePSetFromFile( "ubsplit.cfg", "UBSplitDetector" )
-algo = larcv.UBSplitDetector()
+cfg = larcv.CreatePSetFromFile( "ubsplit.cfg", "UBSplitDetector_Infill" )
+algo = larcv.UBSplitDetector_Infill()
 algo.configure(cfg)
 algo.initialize()
 

@@ -1,9 +1,9 @@
-#ifndef __UBSPLITDETECTOR_CXX__
-#define __UBSPLITDETECTOR_CXX__
+#ifndef __UBSPLITDETECTOR_INFILL_CXX__
+#define __UBSPLITDETECTOR_INFILL_CXX__
 
 #include <ctime>
 
-#include "UBSplitDetector.h"
+#include "UBSplitDetector_Infill.h"
 #include "larcv/core/DataFormat/EventBBox.h"
 #include "larcv/core/DataFormat/EventImage2D.h"
 
@@ -11,22 +11,36 @@
 #include "LArUtil/Geometry.h"
 #include "LArUtil/LArProperties.h"
 
-// ROOT TRandom3
 #include "TRandom3.h"
 
 namespace larcv {
 
-  static UBSplitDetectorProcessFactory __global_UBSplitDetectorProcessFactory__;
+  static UBSplitDetector_InfillProcessFactory __global_UBSplitDetector_InfillProcessFactory__;
 
-  UBSplitDetector::UBSplitDetector(const std::string name)
+  UBSplitDetector_Infill::UBSplitDetector_Infill(const std::string name)
     : ProcessBase(name)
   {}
 
-  void UBSplitDetector::configure(const PSet& cfg)
+ void UBSplitDetector_Infill::configure(const PSet& cfg)
   {
     // operating parameters
     // name of tree from which to get ADC images and their meta
     _input_producer        = cfg.get<std::string>("InputProducer");
+
+    //name of tree from which to make similar cuts to
+    _labels_input            = cfg.get<std::string>("LabelsInput");
+
+    //name of third tree for similar cuts
+    _ADC_input               = cfg.get<std::string>("ADCInput");
+
+    //name of tree to output based off labels Images
+    _output_labels_producer         =cfg.get<std::string>("OutputLabelsProducer");
+
+    //name of tree to output based off ADC Images
+    _output_ADC_producer            = cfg.get<std::string>("OutputADCProducer");
+
+    //output for weights tree
+    _output_weights_producer       = cfg.get<std::string>("OutputWeightsProducer");
 
     // name of producer to store output bounding boxes for each crop
     // all bboxes stored in unrolled vector in (u,v,y) plane order
@@ -82,10 +96,10 @@ namespace larcv {
     _randomize_minfracpix  = cfg.get<float>("MinFracPixelsInCrop",-1.0);
   }
 
-  void UBSplitDetector::initialize()
+  void UBSplitDetector_Infill::initialize()
   {}
 
-  bool UBSplitDetector::process(IOManager& mgr)
+  bool UBSplitDetector_Infill::process(IOManager& mgr)
   {
     // we split the full detector image into 3D subpieces
 
@@ -98,10 +112,34 @@ namespace larcv {
     }
     const std::vector< larcv::Image2D >& img_v = input_image->image2d_array();
 
+    auto labels_image  = (larcv::EventImage2D*)(mgr.get_data("image2d", _labels_input));
+    if (!labels_image) {
+      LARCV_CRITICAL() << "No Image2D found with a name: " << _labels_input << std::endl;
+      throw larbys();
+    }
+    const std::vector< larcv::Image2D >& labels_v = labels_image->image2d_array();
+
+    auto ADC_image = (larcv::EventImage2D*)(mgr.get_data("image2d", _ADC_input));
+    if (!ADC_image) {
+      LARCV_CRITICAL() << "No Image2D found with a name: " << _ADC_input << std::endl;
+      throw larbys();
+    }
+    const std::vector< larcv::Image2D >& ADC_v = ADC_image->image2d_array();
+
     larcv::EventBBox2D*  output_bbox  = (larcv::EventBBox2D*)mgr.get_data( "bbox2d",_output_bbox_producer);
     larcv::EventImage2D* output_imgs  = (larcv::EventImage2D*)mgr.get_data("image2d",_output_img_producer);
+    larcv::EventImage2D* out_labels_imgs  = (larcv::EventImage2D*)mgr.get_data("image2d",_output_labels_producer);
+    larcv::EventImage2D* out_ADC_imgs = (larcv::EventImage2D*)mgr.get_data("image2d",_output_ADC_producer);
+    larcv::EventImage2D* out_weights_imgs = (larcv::EventImage2D*)mgr.get_data("image2d",_output_weights_producer);
+
     output_bbox->clear();
     output_imgs->clear();
+    out_labels_imgs->clear();
+    out_ADC_imgs->clear();
+    out_weights_imgs->clear();
+
+    //create a weights image starting with all zeros
+    //const std::vector< larcv::Image2D >& weights_v = labels_v;
 
     // ----------------------------------------------------------------
 
@@ -220,9 +258,11 @@ namespace larcv {
 									     t1, t2, u1, u2, v1, v2, y1, y2 );
 
       bool filledimg = false;
+
       if ( _enable_img_crop ) {
-	filledimg = cropUsingBBox2D( bbox_vec, img_v, y1, y2, _complete_y_crop, _randomize_minfracpix, *output_imgs );
+	filledimg = cropUsingBBox2D( bbox_vec, img_v,labels_v,ADC_v, y1, y2, _complete_y_crop, _randomize_minfracpix,*out_ADC_imgs, *out_labels_imgs, *output_imgs );
       }
+
 
       if ( filledimg || !_enable_img_crop ) {
 	nfilled ++;
@@ -235,6 +275,55 @@ namespace larcv {
       }
 
     }///end of loop over lattice
+
+    //-----------------------------------------------------------------------------------------------------------
+    // Create Weighted Images
+
+     const std::vector< larcv::Image2D >& labels2_v = out_labels_imgs->image2d_array();
+     const std::vector< larcv::Image2D >& ADC2_v = out_ADC_imgs->image2d_array();
+
+     std::vector< larcv::Image2D > weights_v;
+     for (auto const& img : labels2_v){
+       Image2D copy = img;
+       weights_v.emplace_back(std::move(copy));
+     }
+
+     float ncharge = 0;
+     float nempty = 0;
+     std::cout << "size of container " << labels2_v.size() << std::endl;
+     size_t planes = labels2_v.size();
+     for ( unsigned int plane = 0 ; plane < planes; plane++){
+       //weights_v.push_back( labels2_v[plane] );
+       size_t cols = labels2_v[plane].meta().cols();
+       size_t rows = labels2_v[plane].meta().rows();
+       std::cout << "columns and rows " << cols << " " <<rows <<std::endl;
+         for ( unsigned int col = 0; col < cols; col++){
+           for ( unsigned int row = 0; row < rows; row++){
+              if (labels2_v[plane].pixel(row,col) == 1){
+                 if (ADC2_v[plane].pixel(row,col) >0 ) ncharge++;
+                 else nempty++;
+              }
+           }
+        }
+        for ( unsigned int col = 0; col <cols; col++){
+           for ( unsigned int row = 0; row < rows; row++){
+              if (labels2_v[plane].pixel(row,col) ==1 ){
+                 if (ADC2_v[plane].pixel(row,col) >0){
+                    weights_v[plane].set_pixel(row,col, 1.0/ncharge);
+                 }
+                 else weights_v[plane].set_pixel(row,col, 1.0/nempty);
+
+               }
+            }
+        }
+        //std::cout <<"For plane " <<plane<< "ncharge is " << ncharge <<std::endl;
+        //std::cout <<"For plane " <<plane<< "nempty is " << nempty <<std::endl;
+        ncharge = 0;
+        nempty = 0;
+     }
+     out_weights_imgs->emplace(std::move(weights_v));
+
+    //---------------------------------------------------------------------------------------------------------------
 
     LARCV_DEBUG() << "Number of cropped images: " << output_imgs->image2d_array().size() << std::endl;
     LARCV_DEBUG() << "Number of cropped images per plane: " << output_imgs->image2d_array().size()/3 << std::endl;
@@ -264,7 +353,7 @@ namespace larcv {
     return true;
   }
 
-  std::vector<larcv::BBox2D> UBSplitDetector::defineBoundingBoxFromCropCoords( const std::vector<larcv::Image2D>& img_v,
+  std::vector<larcv::BBox2D> UBSplitDetector_Infill::defineBoundingBoxFromCropCoords( const std::vector<larcv::Image2D>& img_v,
 									       const int box_pixel_width, const int box_pixel_height,
 									       const int t1, const int t2,
 									       const int u1, const int u2,
@@ -351,15 +440,21 @@ namespace larcv {
 
   }
 
-  bool UBSplitDetector::cropUsingBBox2D( const std::vector<larcv::BBox2D>& bbox_vec,
-					 const std::vector<larcv::Image2D>& img_v,
-					 const int y1, const int y2, bool fill_y_image,
-					 const float minpixfrac,
-					 larcv::EventImage2D& output_imgs ) {
+  bool UBSplitDetector_Infill::cropUsingBBox2D( const std::vector<larcv::BBox2D>& bbox_vec,
+					                               const std::vector<larcv::Image2D>& img_v,
+                                         const std::vector<larcv::Image2D>& labels_v,
+                                         const std::vector<larcv::Image2D>& ADC_v,
+					                               const int y1, const int y2, bool fill_y_image,
+					                               const float minpixfrac,
+                                         larcv::EventImage2D& out_ADC_imgs,
+                                         larcv::EventImage2D& out_labels_imgs,
+					                               larcv::EventImage2D& output_imgs ) {
     // inputs
     // ------
     // bbox_v, vector of bounding boxes for (u,v,y)
-    // img_v, source adc images
+    // img_v, source wire images
+    // labels_v, source of labels images
+    // ADC_v, source ADC images
     // y1, y2: range of y-wires fully covered by U,V
     // fill_y_image: if true, we fill the entire cropped y-image.
     //               else we only fill the region of y-wires that
@@ -370,7 +465,8 @@ namespace larcv {
     // outputs
     // --------
     // output_imgs, cropped output image2d instances filled into eventimage2d container
-
+    // out_ADC_imgs, cropped output ADC
+    // out_labels_imgs, cropped output labels
 
     // get bounding boxes
     const larcv::BBox2D& bbox_u = bbox_vec[0];
@@ -381,73 +477,100 @@ namespace larcv {
     const larcv::ImageMeta& ymeta = img_v[2].meta();
 
     // Y copies range of y-wires into center of output crop
-
     larcv::ImageMeta crop_yp( bbox_y.min_x(), bbox_y.min_y(), bbox_y.max_x(), bbox_y.max_y(),
 			      (int)(bbox_y.height()/ymeta.pixel_height()),
 			      (int)(bbox_y.width()/ymeta.pixel_width()),
 			      ymeta.id() );
 
     std::vector<larcv::Image2D> y_img_holder;
+    std::vector<larcv::Image2D> labels_holder;
+    std::vector<larcv::Image2D> ADC_holder;
 
     if ( fill_y_image ) {
       // we fill y-columns will all values
       //std::cout << "Y-crop: " << bbox_y.dump() << std::endl;
       larcv::Image2D crop_yimg = img_v[2].crop( bbox_y );
+      larcv::Image2D crop_labels = labels_v[2].crop( bbox_y );
+      larcv::Image2D crop_ADC = ADC_v[2].crop( bbox_y );
+
       y_img_holder.emplace_back( std::move(crop_yimg) );
-    }
+      labels_holder.emplace_back( std::move(crop_labels) );
+      ADC_holder.emplace_back( std::move(crop_ADC) );
+   }
+
     else {
       // we only fill y-wires that are fully covered by U,V wires
       std::cout << "center-filled y plane crop" << std::endl;
       int t1 = ymeta.row( bbox_y.min_y() );
 
       larcv::Image2D ytarget( crop_yp );
+      larcv::Image2D labelstarget( crop_yp );
+      larcv::Image2D ADCtarget( crop_yp );
+
       ytarget.paint(0.0);
+      labelstarget.paint(0.0);
+      ADCtarget.paint(0.0);
+
       for (int c=0; c<(int)crop_yp.cols(); c++) {
-	float cropx = crop_yp.pos_x(c);
-	if ( cropx<y1 || cropx>=y2 )
-	  continue;
-	int cropc = ymeta.col(cropx);
-	for (int r=0; r<(int)crop_yp.rows(); r++) {
-	  ytarget.set_pixel( r, c, img_v[2].pixel( t1+r, cropc ) );
-	}
+	       float cropx = crop_yp.pos_x(c);
+	       if ( cropx<y1 || cropx>=y2 )
+	          continue;
+	       int cropc = ymeta.col(cropx);
+	       for (int r=0; r<(int)crop_yp.rows(); r++) {
+	           ytarget.set_pixel( r, c, img_v[2].pixel( t1+r, cropc ) );
+	           labelstarget.set_pixel( r, c, labels_v[2].pixel( t1+r, cropc) );
+             ADCtarget.set_pixel( r, c, ADC_v[2].pixel( t1+r, cropc) );
+         }
       }
       y_img_holder.emplace_back( std::move( ytarget ) );
+      labels_holder.emplace_back( std::move( labelstarget ) );
+      ADC_holder.emplace_back( std::move( ADCtarget ) );
     }
 
-    float frac_occupied = 0.;
+    float occupied = 0.;
     bool saveimg = true;
 
-    if ( minpixfrac>0 ) {
-      const larcv::Image2D& yimg = y_img_holder[0];
-      for (int row=0; row<(int)yimg.meta().rows(); row++) {
-	for (int col=0; col<(int)yimg.meta().cols(); col++) {
-	  if ( yimg.pixel(row,col)>10.0 )
-	    frac_occupied+=1.0;
-	}
+    if ( minpixfrac>=0 ) {
+      const larcv::Image2D& yADC = ADC_holder[0];
+      const larcv::Image2D& ylabels = labels_holder[0];
+      for (int row=0; row<(int)yADC.meta().rows(); row++) {
+	       for (int col=0; col<(int)yADC.meta().cols(); col++) {
+	          if ( (yADC.pixel(row,col)*ylabels.pixel(row,col)) > 0 )
+	          occupied+=1.0;
+         }
       }
-      frac_occupied /= float(yimg.meta().rows()*yimg.meta().cols());
-
-      if ( frac_occupied<minpixfrac )
-	saveimg = false;
+      if ( occupied <= 0 ) saveimg = false;
     }
 
 
     if ( !saveimg )
-      return false;
-
+      {return false;}
+    else
+        {std::cout << "Pixels occupied in dead regions of accepted image: " << occupied << std::endl; }
 
     larcv::Image2D crop_up = img_v[0].crop( bbox_u );
     output_imgs.emplace( std::move(crop_up) );
+    larcv::Image2D crop_up2 = labels_v[0].crop( bbox_u );
+    out_labels_imgs.emplace( std::move(crop_up2) );
+    larcv::Image2D crop_up3 = ADC_v[0].crop( bbox_u );
+    out_ADC_imgs.emplace( std::move(crop_up3) );
 
     larcv::Image2D crop_vp = img_v[1].crop( bbox_v );
     output_imgs.emplace( std::move(crop_vp) );
+    larcv::Image2D crop_vp2 = labels_v[1].crop( bbox_v);
+    out_labels_imgs.emplace( std::move(crop_vp2) );
+    larcv::Image2D crop_vp3 = ADC_v[1].crop( bbox_v );
+    out_ADC_imgs.emplace( std::move(crop_vp3) );
+
 
     output_imgs.emplace( std::move(y_img_holder[0]) );
+    out_labels_imgs.emplace( std::move(labels_holder[0]) );
+    out_ADC_imgs.emplace( std::move(ADC_holder[0]) );
 
     return true;
   }
 
-  std::vector<int> UBSplitDetector::defineImageBoundsFromPosZT( const float zwire, const float tmid, const float zwidth, const float dtick,
+  std::vector<int> UBSplitDetector_Infill::defineImageBoundsFromPosZT( const float zwire, const float tmid, const float zwidth, const float dtick,
 								const int box_pixel_width, const int box_pixel_height,
 								const std::vector<larcv::Image2D>& img_v ) {
 
@@ -603,7 +726,7 @@ namespace larcv {
   }
 
 
-  void UBSplitDetector::finalize()
+  void UBSplitDetector_Infill::finalize()
   {}
 
 }

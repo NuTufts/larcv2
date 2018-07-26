@@ -8,7 +8,7 @@ superafile = "larcv_062218.root"
 
 io = larcv.IOManager(larcv.IOManager.kBOTH)
 io.add_in_file( superafile )
-io.set_out_file( "baka.root" )
+io.set_out_file( "baka_cropinfill.root" )
 io.initialize()
 
 # -------------------------------------
@@ -20,14 +20,14 @@ OutputBBox2DProducer: \"detsplit\"
 CropInModule: true
 OutputCroppedProducer: \"detsplit\"
 BBoxPixelHeight: 512
-BBoxPixelWidth: 512
+BBoxPixelWidth: 832
 CoveredZWidth: 310
 FillCroppedYImageCompletely: true
 DebugImage: true
-MaxImages: 5
+MaxImages: 50
 RandomizeCrops: true
 MaxRandomAttempts: 50
-MinFracPixelsInCrop: -0.0001
+MinFracPixelsInCrop: 0
 """
 
 fcfg = open("ubsplit.cfg",'w')
@@ -40,22 +40,22 @@ split_pset = larcv.CreatePSetFromFile( "ubsplit.cfg", "UBSplitDetector" )
 
 lfcrop_cfg="""Verbosity:0
 InputBBoxProducer: \"detsplit\"
-InputADCProducer: \"wire\"
-InputCroppedADCProducer: \"detsplit\"
-InputVisiProducer: \"Labels\"
-InputFlowProducer: \"ADC\"
-OutputCroppedADCProducer: \"wire\"
-OutputCroppedVisiProducer: \"Labels\"
-OutputCroppedFlowProducer: \"ADC\"
+InputWireProducer: \"wire\"
+InputLabelsProducer: \"Labels\"
+InputADCProducer: \"ADC\"
+OutputCroppedWireProducer: \"wire\"
+OutputCroppedLabelsProducer: \"Labels\"
+OutputCroppedADCProducer: \"ADC\"
+OutputCroppedWeightsProducer: \"Weights\"
 OutputCroppedMetaProducer: \"meta\"
-OutputFilename: \"baka_infill.root\"
-CheckFlow: true
-MakeCheckImage: true
-DoMaxPool: true
+OutputFilename: \"baka_cropinfill.root\"
+CheckFlow: false
+MakeCheckImage: false
+DoMaxPool: false
 RowDownsampleFactor: 2
 ColDownsampleFactor: 2
-MaxImages: 5
-LimitOverlap: true
+MaxImages: 10
+LimitOverlap: false
 MaxOverlapFraction: 0.2
 """
 
