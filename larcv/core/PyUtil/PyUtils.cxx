@@ -6,6 +6,7 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 //#include <numpy/ndarrayobject.h>
 #include "numpy/arrayobject.h"
+#include <cassert>
 
 namespace larcv {
 
@@ -25,6 +26,27 @@ PyObject *as_ndarray(const Image2D &img) {
   auto const &vec = img.as_vector();
   return PyArray_Transpose(((PyArrayObject*)(PyArray_SimpleNewFromData(2, dim_data, NPY_FLOAT, (char *)&(vec[0])))),NULL);
   //return PyArray_FromDimsAndData(2, dim_data, NPY_FLOAT, (char *)&(vec[0]));
+}
+
+PyObject *as_ndarray(const SparseTensor3D& data, bool clear_mem) {
+  SetPyUtil();
+  npy_intp dim_data[3];
+  dim_data[0] = data.meta().num_voxel_x();
+  dim_data[1] = data.meta().num_voxel_y();
+  dim_data[2] = data.meta().num_voxel_z();
+
+  static std::vector<float> local_data;
+  local_data.resize(data.meta().size());
+  for(auto &v : local_data) v = 0.;
+
+  for(auto const& vox : data.as_vector())
+    local_data[vox.id()] = vox.value();
+
+  auto res = PyArray_Transpose(((PyArrayObject*)(PyArray_SimpleNewFromData(3, dim_data, NPY_FLOAT, (char *)&(local_data[0])))),NULL);
+  //return PyArray_FromDimsAndData(2, dim_data, NPY_FLOAT, (char *)&(vec[0]));
+
+  if(clear_mem) local_data.clear();
+  return res;
 }
 
 /*
@@ -52,6 +74,122 @@ void copy_array(PyObject *arrayin, const std::vector<float> &cvec) {
   };
 }
 */
+
+void as_flat_arrays(const VoxelSet& tensor, const ImageMeta& meta,
+                    PyObject* x, PyObject* y, PyObject* value)
+{
+  SetPyUtil();
+  PyArrayObject *xarr = (PyArrayObject*)(x);
+  PyArrayObject *yarr = (PyArrayObject*)(y);
+  PyArrayObject *varr = (PyArrayObject*)(value);
+
+  auto const& voxel_v = tensor.as_vector();
+
+  assert(PyArray_NDIM(xarr) == 1);
+  assert(PyArray_NDIM(yarr) == 1);
+  assert(PyArray_NDIM(varr) == 1);
+
+  if(PyArray_SIZE(xarr) < (int)(voxel_v.size()) ||
+     PyArray_SIZE(yarr) < (int)(voxel_v.size()) ||
+     PyArray_SIZE(varr) < (int)(voxel_v.size())) {
+    std::cerr << "PyArray size smaller than data size!" << std::endl;
+    throw std::exception();
+  }
+
+  npy_intp loc[1];
+  loc[0] = 0;
+  auto xptr =   (int*)(PyArray_GetPtr(xarr, loc));
+  auto yptr =   (int*)(PyArray_GetPtr(yarr, loc));
+  auto vptr = (float*)(PyArray_GetPtr(varr, loc));
+
+  size_t xpos, ypos;
+
+  for (size_t i = 0; i < voxel_v.size(); ++i) {
+    // std::cout << fptr[i] << std::endl;
+    auto const& vox = voxel_v[i];
+    meta.index_to_rowcol(vox.id(),ypos,xpos);
+    xptr[i] = (int)(xpos);
+    yptr[i] = (int)(ypos);
+    vptr[i] = (float)(vox.value());
+  };
+}
+
+void as_flat_arrays(const VoxelSet& tensor, const Voxel3DMeta& meta,
+                    PyObject* x, PyObject* y, PyObject* z, PyObject* value)
+{
+  SetPyUtil();
+  PyArrayObject *xarr = (PyArrayObject*)(x);
+  PyArrayObject *yarr = (PyArrayObject*)(y);
+  PyArrayObject *zarr = (PyArrayObject*)(z);
+  PyArrayObject *varr = (PyArrayObject*)(value);
+
+  auto const& voxel_v = tensor.as_vector();
+
+  assert(PyArray_NDIM(xarr) == 1);
+  assert(PyArray_NDIM(yarr) == 1);
+  assert(PyArray_NDIM(zarr) == 1);
+  assert(PyArray_NDIM(varr) == 1);
+
+  if(PyArray_SIZE(xarr) < (int)(voxel_v.size()) ||
+     PyArray_SIZE(yarr) < (int)(voxel_v.size()) ||
+     PyArray_SIZE(zarr) < (int)(voxel_v.size()) ||
+     PyArray_SIZE(varr) < (int)(voxel_v.size())) {
+    std::cerr << "PyArray size smaller than data size!" << std::endl;
+    throw std::exception();
+  }
+
+  npy_intp loc[1];
+  loc[0] = 0;
+  auto xptr =   (int*)(PyArray_GetPtr(xarr, loc));
+  auto yptr =   (int*)(PyArray_GetPtr(yarr, loc));
+  auto zptr =   (int*)(PyArray_GetPtr(zarr, loc));
+  auto vptr = (float*)(PyArray_GetPtr(varr, loc));
+
+  size_t xpos, ypos, zpos;
+
+  for (size_t i = 0; i < voxel_v.size(); ++i) {
+    // std::cout << fptr[i] << std::endl;
+    auto const& vox = voxel_v[i];
+    meta.id_to_xyz_index(vox.id(), xpos, ypos, zpos);
+    xptr[i] = (int)(xpos);
+    yptr[i] = (int)(ypos);
+    zptr[i] = (int)(zpos);
+    vptr[i] = (float)(vox.value());
+  };
+}
+
+void as_flat_arrays(const VoxelSet& tensor, const Voxel3DMeta& meta,
+                    PyObject* index, PyObject* value)
+{
+  SetPyUtil();
+  PyArrayObject *iarr = (PyArrayObject*)(index);
+  PyArrayObject *varr = (PyArrayObject*)(value);
+
+  auto const& voxel_v = tensor.as_vector();
+
+  assert(PyArray_NDIM(iarr) == 1);
+  assert(PyArray_NDIM(varr) == 1);
+
+  if(PyArray_SIZE(iarr) < (int)(voxel_v.size()) ||
+     PyArray_SIZE(varr) < (int)(voxel_v.size())) {
+    std::cerr << "PyArray size smaller than data size!" << std::endl;
+    throw std::exception();
+  }
+
+  npy_intp loc[1];
+  loc[0] = 0;
+  auto iptr =   (int*)(PyArray_GetPtr(iarr, loc));
+  auto vptr = (float*)(PyArray_GetPtr(varr, loc));
+
+  size_t xpos, ypos, zpos;
+
+  for (size_t i = 0; i < voxel_v.size(); ++i) {
+    // std::cout << fptr[i] << std::endl;
+    auto const& vox = voxel_v[i];
+    iptr[i] = vox.id();
+    vptr[i] = vox.value();
+  };
+}
 
 template<class T>
 void _copy_array(PyObject *arrayin, const std::vector<T> &cvec) {
@@ -363,11 +501,11 @@ PyObject* numpy_array(std::vector<size_t> dims)
   PyArrayObject *ptr = (PyArrayObject*)(res);
   // Check dimension size is 1:
   //std::cout<<"ndim " << PyArray_NDIM(ptr) << std::endl;
-  size_t len = PyArray_SIZE(ptr);
+  //size_t len = PyArray_SIZE(ptr);
   //std::cout<<"len " << len <<std::endl;
-  npy_intp loc[1];
-  loc[0] = 0;
-  auto fptr = (T *)(PyArray_GetPtr(ptr, loc));
+  //npy_intp loc[1];
+  //loc[0] = 0;
+  //auto fptr = (T *)(PyArray_GetPtr(ptr, loc));
   /*
   std::cout<<"fptr " << fptr << std::endl;
   for (size_t i = 0; i < len; ++i) {

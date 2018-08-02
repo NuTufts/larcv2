@@ -32,6 +32,7 @@ void EventPIDLabel::configure(const PSet& cfg) {
 void EventPIDLabel::initialize() {}
 
 bool EventPIDLabel::process(IOManager& mgr) {
+  // std::cout << "Enter EventPIDLabel::process " << std::endl;
 
   // // Read in the particles that define the pdg types:
   // auto const& ev_particle =
@@ -199,9 +200,11 @@ bool EventPIDLabel::process(IOManager& mgr) {
   // std::cout << "Category: " << _int_type
   //           << "\t Np: "   << proton_count
   //           << "\t Npi: "  << charged_pion_count
-  //           << "\t Npi0: " << neutral_pion_count
-  //           << "\tfinal: " << final_index << std::endl;
+  //           << "\t Npi0: " << neutral_pion_count << std::endl;
 
+
+
+  // std::cout << "Exit EventPIDLabel::process " << std::endl;
 
   return true;
 }
