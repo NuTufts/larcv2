@@ -42,6 +42,7 @@ namespace larcv {
     _output_flo_producer    = cfg.get<std::string>("OutputCroppedFlowProducer");
     _output_meta_producer   = cfg.get<std::string>("OutputCroppedMetaProducer");    
     _output_filename        = cfg.get<std::string>("OutputFilename");
+    _is_mc                  = cfg.get<bool>("IsMC");
 
     _max_images             = cfg.get<int>("MaxImages",-1);
     _thresholds_v           = cfg.get< std::vector<float> >("Thresholds",std::vector<float>(3,10.0) );
@@ -104,20 +105,28 @@ namespace larcv {
     const std::vector< larcv::Image2D >& img_v = ev_in_adc->image2d_array();
 
     // input visibility/matchability
-    auto ev_in_vis  = (larcv::EventImage2D*)(mgr.get_data("image2d", _input_vis_producer));
-    if (!ev_in_vis) {
-      LARCV_CRITICAL() << "No Input VIS Image2D found with a name: " << _input_vis_producer << std::endl;
-      throw larbys();
+    larcv::EventImage2D* ev_in_vis = NULL;
+    const std::vector< larcv::Image2D >* vis_v = NULL;    
+    if ( _is_mc ) {
+      ev_in_vis  = (larcv::EventImage2D*)(mgr.get_data("image2d", _input_vis_producer));
+      if (!ev_in_vis) {
+	LARCV_CRITICAL() << "No Input VIS Image2D found with a name: " << _input_vis_producer << std::endl;
+	throw larbys();
+      }
+      vis_v = &(ev_in_vis->image2d_array());
     }
-    const std::vector< larcv::Image2D >& vis_v = ev_in_vis->image2d_array();
-
+    
     // input flo
-    auto ev_in_flo  = (larcv::EventImage2D*)(mgr.get_data("image2d", _input_flo_producer));
-    if (!ev_in_flo) {
-      LARCV_CRITICAL() << "No Input flo Image2D found with a name: " << _input_flo_producer << std::endl;
-      throw larbys();
+    larcv::EventImage2D* ev_in_flo = NULL;
+    const std::vector< larcv::Image2D >* flo_v = NULL;
+    if ( _is_mc ) {
+      ev_in_flo  = (larcv::EventImage2D*)(mgr.get_data("image2d", _input_flo_producer));
+      if (!ev_in_flo) {
+	LARCV_CRITICAL() << "No Input flo Image2D found with a name: " << _input_flo_producer << std::endl;
+	throw larbys();
+      }
+      flo_v = &(ev_in_flo->image2d_array());
     }
-    const std::vector< larcv::Image2D >& flo_v = ev_in_flo->image2d_array();
 
     // input BBox
     auto ev_in_bbox  = (larcv::EventImage2D*)(mgr.get_data("bbox2d", _input_bbox_producer));
@@ -144,17 +153,23 @@ namespace larcv {
 
     if ( _save_output ) {
       ev_out_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_adc_producer);
-      ev_vis_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_vis_producer);
-      ev_flo_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_flo_producer);
+      if ( _is_mc ) {
+	ev_vis_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_vis_producer);
+	ev_flo_adc = (larcv::EventImage2D*)foutIO->get_data("image2d",_output_flo_producer);
+      }
     }
     else {
       ev_out_adc = (larcv::EventImage2D*)mgr.get_data("image2d",_output_adc_producer);
-      ev_vis_adc = (larcv::EventImage2D*)mgr.get_data("image2d",_output_vis_producer);
-      ev_flo_adc = (larcv::EventImage2D*)mgr.get_data("image2d",_output_flo_producer);
+      if ( _is_mc ) {
+	ev_vis_adc = (larcv::EventImage2D*)mgr.get_data("image2d",_output_vis_producer);
+	ev_flo_adc = (larcv::EventImage2D*)mgr.get_data("image2d",_output_flo_producer);
+      }
     }
     ev_out_adc->clear();
-    ev_vis_adc->clear();
-    ev_flo_adc->clear();
+    if ( _is_mc ) {
+      ev_vis_adc->clear();
+      ev_flo_adc->clear();
+    }
     
     // Output Meta containers
     larcv::EventMeta* ev_meta = NULL;
@@ -189,7 +204,7 @@ namespace larcv {
     
     for (int icrop=0; icrop<ncrops; icrop++) {
 
-      // this is a copy. not great. could swap if needed ...
+      // this is a copy of the ADC image crop. not great. could swap if needed ...
       std::vector<larcv::Image2D> crop_v;
       for (int i=0; i<3; i++) {
 	crop_v.push_back( cropped_v.at( 3*icrop+i ) );
@@ -214,34 +229,38 @@ namespace larcv {
 	}
 	//std::cout << "Overlap fraction: " << frac_overlap << std::endl;
       }
-      
-      LARCV_DEBUG() << "Start crop of Flow and Visibility images of image #" << icrop << std::endl;
-      //std::cout << "Start crop of Flow and Visibility images of image #" << icrop << std::endl;
-      std::vector<larcv::Image2D> cropped_flow;
-      std::vector<larcv::Image2D> cropped_visi;
-      make_cropped_flow_images( src_plane, src_meta,
-				crop_v, flo_v, vis_v,
-				_thresholds_v,
-				_do_maxpool, _row_downsample_factor, _col_downsample_factor,
-				cropped_flow, cropped_visi,
-				&logger() );
-      
-      // check the quality of the crop
+
+      // Crop of Truth Labels (only if using MC file)
       bool passes_check_filter = true;
-      std::vector<float> check_results(5,0);
-      if ( _check_flow ) {
-	check_results = check_cropped_images( src_plane, crop_v, _thresholds_v, cropped_flow, cropped_visi, _make_check_image, &(logger()), 0 );
-	UBCropLArFlow::_check_img_counter++;
+      std::vector<larcv::Image2D> cropped_flow; // stores cropped flow image set for this crop
+      std::vector<larcv::Image2D> cropped_visi; // stores cropped visi image set for this crop
+      std::vector<float> check_results(5,0);    // stores metrics for checking crop quality
+      if ( _is_mc ) {
+      
+	LARCV_DEBUG() << "Start crop of Flow and Visibility images of image #" << icrop << std::endl;
 
-	// check filter: has minimum visible pixels
-	if ( check_results[1]>=100 && check_results[2]>=100 ) {
-	  passes_check_filter = true;
+	make_cropped_flow_images( src_plane, src_meta,
+				  crop_v, *flo_v, *vis_v,
+				  _thresholds_v,
+				  _do_maxpool, _row_downsample_factor, _col_downsample_factor,
+				  cropped_flow, cropped_visi,
+				  &logger() );
+      
+	// check the quality of the crop
+	if ( _check_flow ) {
+	  check_results = check_cropped_images( src_plane, crop_v, _thresholds_v, cropped_flow, cropped_visi, _make_check_image, &(logger()), 0 );
+	  UBCropLArFlow::_check_img_counter++;
+	  
+	  // check filter: has minimum visible pixels
+	  if ( check_results[1]>=100 && check_results[2]>=100 ) {
+	    passes_check_filter = true;
+	  }
+	  else {
+	    passes_check_filter = false;
+	  }
 	}
-	else {
-	  passes_check_filter = false;
-	}
-      }
-
+      }//end of is mc
+      
       if ( passes_check_filter || !_require_min_goodpixels ) {
 
 
@@ -256,20 +275,25 @@ namespace larcv {
 	    }
 	  }
 	}
-
+	
 	//LARCV_DEBUG() << "Store LArFlow Crop" << std::endl;
 	if ( _save_output ) {
 	  ev_out_adc->emplace( std::move(crop_v) );
-	  ev_vis_adc->emplace( std::move(cropped_visi) );
-	  ev_flo_adc->emplace( std::move(cropped_flow) );
+	  if ( _is_mc ) {
+	    ev_vis_adc->emplace( std::move(cropped_visi) );
+	    ev_flo_adc->emplace( std::move(cropped_flow) );
+	  }
 	}
 	else {
 	  for ( auto& img : crop_v )
 	    ev_out_adc->emplace( std::move(img) );
-	  for ( auto& img : cropped_visi )
-	    ev_vis_adc->emplace( std::move(img) );
-	  for ( auto& img : cropped_flow )
-	    ev_flo_adc->emplace( std::move(img) );
+
+	  if ( _is_mc ) {
+	    for ( auto& img : cropped_visi )
+	      ev_vis_adc->emplace( std::move(img) );
+	    for ( auto& img : cropped_flow )
+	      ev_flo_adc->emplace( std::move(img) );
+	  }
 	}
 	//std::cout << "Store LArFlow Crops (nstored=" << ev_out_adc->image2d_array().size() << ")" << std::endl;
 	

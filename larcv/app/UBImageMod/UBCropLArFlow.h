@@ -115,6 +115,7 @@ namespace larcv {
     float _max_overlap_fraction;
     int   _verbosity_;
     bool  _save_output;
+    bool  _is_mc;
 
 
     static int _check_img_counter;
