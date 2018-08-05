@@ -14,7 +14,8 @@ typedef _object PyObject;
 //#endif
 
 #include "larcv/core/DataFormat/Image2D.h"
-#include "larcv/core/DataFormat/Voxel.h"
+#include "larcv/core/DataFormat/Voxel3D.h"
+#include "larcv/core/DataFormat/Voxel3DMeta.h"
 
 namespace larcv {
 /// Utility function: call one-time-only numpy module initialization (you don't
@@ -35,6 +36,8 @@ PyObject* as_ndarray(const std::vector< double             > &data);
 PyObject* as_ndarray(const Image2D &img);
 /// larcv::Image2D to numpy array converter
 PyObject* as_caffe_ndarray(const Image2D &img);
+/// larcv::VoxelSet to numpy array converter
+PyObject* as_ndarray(const SparseTensor3D &data, bool clear_mem=false);
 /// copy array
 template <class T>
 void _copy_array(PyObject *arrayin, const std::vector<T> &cvec);
@@ -45,6 +48,18 @@ void copy_array(PyObject *arrayin, const std::vector< int            > &cvec);
 void copy_array(PyObject *arrayin, const std::vector< long long      > &cvec);
 void copy_array(PyObject *arrayin, const std::vector< float          > &cvec);
 void copy_array(PyObject *arrayin, const std::vector< double         > &cvec);
+
+/// Algorithm to extract three 1D arrays (x y and value) from 2D VoxelSet
+void as_flat_arrays(const VoxelSet& tensor, const ImageMeta& meta,
+		    PyObject* x, PyObject* y, PyObject* value);
+
+/// Algorithm to extract four 1D arrays (x y z and value) from 3D VoxelSet
+void as_flat_arrays(const VoxelSet& tensor, const Voxel3DMeta& meta,
+		    PyObject* x, PyObject* y, PyObject* z, PyObject* value);
+
+/// Algorithm to extract four 1D arrays (index and value) from 3D VoxelSet
+void as_flat_arrays(const VoxelSet& tensor, const Voxel3DMeta& meta,
+		    PyObject* index, PyObject* value);
 
 //void copy_array(PyObject *arrayin, const std::vector<float> &cvec);
 // void copy_array(PyObject *arrayin);//, const std::vector<float>& vec);
