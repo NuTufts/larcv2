@@ -20,7 +20,17 @@ namespace larcv {
 
   UBSplitDetector::UBSplitDetector(const std::string name)
     : ProcessBase(name)
-  {}
+  {
+    _num_expected_crops = -1;
+    _numcrops_changed = false;
+
+    elapsed_genbbox = 0;
+    elapsed_crop = 0;
+    elapsed_alloc = 0;
+    elapsed_fraccheck = 0;
+    elapsed_save = 0;
+    
+  }
 
   void UBSplitDetector::configure(const PSet& cfg)
   {
@@ -79,7 +89,10 @@ namespace larcv {
     // max fraction of pixels with above threshold values
     // else we don't keep it
     // if value is 0 or less, then we do not enforce this cut
-    _randomize_minfracpix  = cfg.get<float>("MinFracPixelsInCrop",-1.0);    
+    _randomize_minfracpix  = cfg.get<float>("MinFracPixelsInCrop",-1.0);
+    if (!_randomize_crops) {
+      _randomize_minfracpix = -1.0; // only use filter for random cropping
+    }
   }
 
   void UBSplitDetector::initialize()
@@ -100,8 +113,21 @@ namespace larcv {
     
     larcv::EventBBox2D*  output_bbox  = (larcv::EventBBox2D*)mgr.get_data( "bbox2d",_output_bbox_producer);
     larcv::EventImage2D* output_imgs  = (larcv::EventImage2D*)mgr.get_data("image2d",_output_img_producer);
+    // we reset the output variables
+    // clear the list of bounding boxes
     output_bbox->clear();
-    output_imgs->clear();
+    // we don't want to reallocate a large number of images each time we run this process
+    //  if we can avoid it. random crops we have to, but for non-random crops, the subimages should be
+    //  the same.
+    if ( _randomize_crops ) {
+      // we clear for randomized crops...
+      output_imgs->clear();
+    }
+    else {
+      std::cout << "reset current images. num=" << output_imgs->as_vector().size() << std::endl;
+      mgr.donot_clear_product("image2d",_output_img_producer); // we take over clearing this container
+      output_imgs->paintall(0.0);
+    }
     
     // ----------------------------------------------------------------
 
@@ -138,8 +164,11 @@ namespace larcv {
       nz++;
     float zstep = float(zspan)/float(nz);
 
-    // store cropped coordinates here
-    std::vector< std::vector<int> > lattice;
+    // store cropped coordinates in m_lattice;
+    // to help performance, we avoid reallocating/refilling vectors
+    // which won't change in size
+    //std::vector< std::vector<int> > lattice;
+
       
     if ( !_randomize_crops ) {
       // crop in lattice pattern through detector
@@ -149,27 +178,60 @@ namespace larcv {
       LARCV_DEBUG() << "tstep=" << tstep << std::endl;            
       LARCV_DEBUG() << "nt,nz: " << nt  << " " << nz << std::endl;
       LARCV_DEBUG() << "start (z,t): (" << zstart << ", " << startt << ")" << std::endl;
-      
-      lattice.reserve( (nt+1)*(nz+1) );
-      
-      for (int it=0; it<=nt; it++) {
-	
-	float tmid = startt + it*tstep;
-	
-	for (int iz=0; iz<=nz; iz++) {
 
-	  float zwire = zstart + zstep*iz;
-	  std::vector<int> crop_coords = defineImageBoundsFromPosZT( zwire, tmid, zwidth, dtick,
-								     _box_pixel_width, _box_pixel_height,
-								     img_v );
-	  lattice.emplace_back( std::move(crop_coords) );
+      int ncrops = (nz+1)*(nt+1);
+      // did the number of crops changed?
+      if ( ncrops!=_num_expected_crops ) {
+	_num_expected_crops = ncrops;
+	_numcrops_changed = true;
+	m_lattice.clear();
+	m_lattice.reserve( ncrops );
+	output_imgs->clear(); // must change, so we clear
+	output_imgs->reserve( ncrops*3 );
+	std::cout << "setting number of expected crops. ncrops=" << ncrops << " outsize=" << output_imgs->as_vector().size() << std::endl;
+      }
+      else {
+	_numcrops_changed = false;
+	std::cout << "no change in number of expected crops. "
+		  << " ncrops=" << ncrops
+		  << " num_expected_crops=" << _num_expected_crops
+		  << " numcrops_changed_flag=" << _numcrops_changed
+		  << " outsize=" << output_imgs->as_vector().size() << std::endl;
+      }
+      
+      if ( _numcrops_changed ) {
+	// if the number of crops changed, we need to refill the m_lattice vector
+	for (int it=0; it<=nt; it++) {
+	
+	  float tmid = startt + it*tstep;
 	  
+	  for (int iz=0; iz<=nz; iz++) {
+	    
+	    float zwire = zstart + zstep*iz;
+	    std::clock_t begin = std::clock();
+	    std::vector<int> crop_coords = defineImageBoundsFromPosZT( zwire, tmid, zwidth, dtick,
+								       _box_pixel_width, _box_pixel_height,
+								       img_v );
+	    m_lattice.emplace_back( std::move(crop_coords) );
+	    std::clock_t end = std::clock();
+	    elapsed_genbbox += double(end - begin) / CLOCKS_PER_SEC;
+	    
+	  }
 	}
       }
-      LARCV_INFO() << "Full Image split into " << lattice.size() << " subimages" << std::endl;
+      LARCV_INFO() << "Full Image split into " << m_lattice.size() << " subimages" << std::endl;
+      
     }
     else {
       // random cropping
+      // number of crops determined by fcl file, so never changes
+      _numcrops_changed   = false;
+      _num_expected_crops = _randomize_attempts;
+      
+      // but we must refill the cropping coordinates each time
+      m_lattice.clear();
+      m_lattice.reserve( _randomize_attempts );
+      
       TRandom3 rand(time(NULL));
       for (int iatt=0; iatt<_randomize_attempts; iatt++) {
 	
@@ -184,27 +246,44 @@ namespace larcv {
 	std::vector<int> crop_coords = defineImageBoundsFromPosZT( z, t, zwidth, dtick,
 								   _box_pixel_width, _box_pixel_height,
 								   img_v );
-	lattice.emplace_back( std::move(crop_coords) );
+	m_lattice.emplace_back( std::move(crop_coords) );
       }
-      LARCV_INFO() << "Num of randomized cropping points generated: " << lattice.size() << std::endl;
+      LARCV_INFO() << "Num of randomized cropping points generated: " << m_lattice.size() << std::endl;
     }
 
     // debug
-    std::vector<larcv::Image2D> coverage_v;
+    // we track coverage of crops by marking up an image
+    //std::vector<larcv::Image2D> coverage_v;
     if ( _debug_img ) {
-      for ( int p=0; p<3; p++) {
-	larcv::Image2D cov( img_v[p].meta() );
-	cov.paint(0.0);
-	coverage_v.emplace_back( std::move(cov) );
+      if ( m_coverage_v.size()!=img_v.size() ) {
+	// coverage vector does not match the input image vector size, update it
+	m_coverage_v.clear();
+	for ( int p=0; p<3; p++) {
+	  larcv::Image2D cov( img_v[p].meta() );
+	  cov.paint(0.0);
+	  m_coverage_v.emplace_back( std::move(cov) );
+	}
+      }
+      else {
+	// zero it out (but don't reallocate)
+	for ( int p=0; p<3; p++)
+	  m_coverage_v[p].paint(0.0);
       }
     }
     
     // create bounding boxes around lattice points
     int nfilled = 0;
     int nrejected = 0;
-    for ( auto const& cropcoords : lattice ) {
+    bool copy_imgs = true;
+    if ( _enable_img_crop && _randomize_crops ) {
+      // we cleared the vector
+      // we must reserve for max images possible
+      copy_imgs = false;
+    }
 
-      if ( _max_images>0 && _max_images<=(int)(output_imgs->image2d_array().size()/3) )
+    for ( auto const& cropcoords : m_lattice ) {
+
+      if ( _max_images>0 && _max_images<=nfilled )
 	break;
       
       int y1 = cropcoords[0];
@@ -216,12 +295,40 @@ namespace larcv {
       int t1 = cropcoords[6];
       int t2 = cropcoords[7];
 
+      std::clock_t begin = std::clock();
       std::vector<larcv::BBox2D> bbox_vec = defineBoundingBoxFromCropCoords( img_v, _box_pixel_width, _box_pixel_height,
 									     t1, t2, u1, u2, v1, v2, y1, y2 );
+      std::clock_t end = std::clock();      
+      elapsed_genbbox += double(end - begin) / CLOCKS_PER_SEC;
 
+      // we have the option to fill images from these bounding boxes
+      // issues:
+      //   for simple splitting of image, we can avoid reallocation by overwriting pixel values
+      //   for random cropping or filtering, the size changes. we resize to avoid as many reallocations as possible
       bool filledimg = false;
       if ( _enable_img_crop ) {
-	filledimg = cropUsingBBox2D( bbox_vec, img_v, y1, y2, _complete_y_crop, _randomize_minfracpix, *output_imgs );
+	if ( copy_imgs && _numcrops_changed ) {
+	  // we need to create image to copy to
+	  // the intention is for this to only run once
+	  std::clock_t begin = std::clock();
+	  for ( size_t ip=0; ip<img_v.size(); ip++ ) {
+	    larcv::ImageMeta planecrop( bbox_vec[ip].min_x(), bbox_vec[ip].min_y(), bbox_vec[ip].max_x(), bbox_vec[ip].max_y(),
+					(int)(bbox_vec[ip].height()/img_v[ip].meta().pixel_height()),
+					(int)(bbox_vec[ip].width()/img_v[ip].meta().pixel_width()),
+					img_v[ip].meta().id() );
+	    larcv::Image2D imgcrop( planecrop );
+	    imgcrop.paint(0.0);
+	    output_imgs->emplace( std::move(imgcrop) );
+	  }
+	  std::clock_t end = std::clock();
+	  elapsed_alloc += double(end - begin) / CLOCKS_PER_SEC;
+	  //std::cout << "Created image for copying values. Total number=" << output_imgs->as_vector().size() << std::endl;
+	}
+	//std::cout << "crop using bbox2d, reuse image. nfilled=" << nfilled << " copy_imgs=" << copy_imgs << " output_imgs_size=" << output_imgs->as_vector().size() << std::endl;
+	begin = std::clock();
+	filledimg = cropUsingBBox2D( bbox_vec, img_v, y1, y2, _complete_y_crop, _randomize_minfracpix, nfilled*3, copy_imgs, *output_imgs );
+	end = std::clock();
+	elapsed_crop += double(end - begin) / CLOCKS_PER_SEC;
       }
 
       if ( filledimg || !_enable_img_crop ) {
@@ -236,9 +343,9 @@ namespace larcv {
       
     }///end of loop over lattice
 
-    LARCV_DEBUG() << "Number of cropped images: " << output_imgs->image2d_array().size() << std::endl;
-    LARCV_DEBUG() << "Number of cropped images per plane: " << output_imgs->image2d_array().size()/3 << std::endl;
-    LARCV_INFO()  << "BBoxes gen'ed=" << lattice.size() << " filled=" << nfilled << " rejected=" << nrejected << std::endl;
+    LARCV_DEBUG() << "Number of cropped images: " << output_imgs->as_vector().size() << std::endl;
+    LARCV_DEBUG() << "Number of cropped images per plane: " << output_imgs->as_vector().size()/3 << std::endl;
+    LARCV_INFO()  << "BBoxes gen'ed=" << m_lattice.size() << " filled=" << nfilled << " rejected=" << nrejected << std::endl;
 
     // if ( _debug_img ) {
     //   auto outev_coverage = (larcv::EventImage2D*)(mgr.get_data("image2d", "coverage"));
@@ -355,6 +462,8 @@ namespace larcv {
 					 const std::vector<larcv::Image2D>& img_v,
 					 const int y1, const int y2, bool fill_y_image,
 					 const float minpixfrac,
+					 const int first_outidx,
+					 const bool copy_imgs,
 					 larcv::EventImage2D& output_imgs ) {
     // inputs
     // ------
@@ -366,66 +475,104 @@ namespace larcv {
     //               are entirely covered by the u,v cropped images
     // minpixfrac: if value is >0, we enforce a minimum value on the
     //               number of pixels occupied in the Y-image
+    // first_outidx: if copying images instead of adding images into a vector
+    // copy_imgs: copy, don't create new image and fill
     //
     // outputs
     // --------
     // output_imgs, cropped output image2d instances filled into eventimage2d container
+    //
+    // note: we try to avoid repeated allocation/deallocation of images as this does not scale well
+    // 
 
-
-    // get bounding boxes
-    const larcv::BBox2D& bbox_u = bbox_vec[0];
-    const larcv::BBox2D& bbox_v = bbox_vec[1];
-    const larcv::BBox2D& bbox_y = bbox_vec[2];
-
-    // y-plane meta
-    const larcv::ImageMeta& ymeta = img_v[2].meta();
+    // metas for the source images
+    std::vector< larcv::ImageMeta > src_metas;
+    for ( auto const& srcimg : img_v )
+      src_metas.push_back( srcimg.meta() );
     
-    // Y copies range of y-wires into center of output crop
-    
-    larcv::ImageMeta crop_yp( bbox_y.min_x(), bbox_y.min_y(), bbox_y.max_x(), bbox_y.max_y(),
-			      (int)(bbox_y.height()/ymeta.pixel_height()),
-			      (int)(bbox_y.width()/ymeta.pixel_width()),
-			      ymeta.id() );
+    // metas for the cropped images
+    std::vector< larcv::ImageMeta > crop_metas;
+    for ( size_t ip=0; ip<img_v.size(); ip++ ) {
+      larcv::ImageMeta planecrop( bbox_vec[ip].min_x(), bbox_vec[ip].min_y(), bbox_vec[ip].max_x(), bbox_vec[ip].max_y(),
+				  (int)(bbox_vec[ip].height()/src_metas[ip].pixel_height()),
+				  (int)(bbox_vec[ip].width()/src_metas[ip].pixel_width()),
+				  src_metas[ip].id() );
+      crop_metas.push_back( planecrop );
+    }
 
-    std::vector<larcv::Image2D> y_img_holder;
+    // y-image crop
+    larcv::Image2D  y_img_out_new;        // if we make a new img (we'll move to output container)
+    larcv::Image2D* y_img_out_old = NULL; // if we xfer values (we refer to image already in container)
+    
+    if ( copy_imgs ) {
+      // copy values, don't create new (ugh, so ugly)
+      y_img_out_old = &(output_imgs.modimgat( first_outidx+2 )); // y output image
+      y_img_out_old->modifyMeta( crop_metas[2] ); // set the output meta
+    }
     
     if ( fill_y_image ) {
-      // we fill y-columns will all values
-      //std::cout << "Y-crop: " << bbox_y.dump() << std::endl;
-      larcv::Image2D crop_yimg = img_v[2].crop( bbox_y );
-      y_img_holder.emplace_back( std::move(crop_yimg) );
+      // we fill all y-columns will all values
+      if ( copy_imgs ) {
+	//std::cout << "copy region: " << y_img_out_old->meta().dump() << std::endl;
+	y_img_out_old->copy_region( img_v[2] ); // copy pixels within this region
+      }
+      else {
+	y_img_out_new = img_v[2].crop( bbox_vec[2] );
+      }
     }
     else {
       // we only fill y-wires that are fully covered by U,V wires
-      std::cout << "center-filled y plane crop" << std::endl;
-      int t1 = ymeta.row( bbox_y.min_y() );
-      
-      larcv::Image2D ytarget( crop_yp );
-      ytarget.paint(0.0);
-      for (int c=0; c<(int)crop_yp.cols(); c++) {
-	float cropx = crop_yp.pos_x(c);
+
+      // set first row
+      int t1 = src_metas[2].row( bbox_vec[2].min_y() );
+
+      // get address of y-image we are going to fill
+      // whether we use a new image, or the image in the existing output vector
+      // is determined by the copy_imgs flag
+      larcv::Image2D* y_target = NULL;
+      if ( copy_imgs ) {
+	y_img_out_old->paint(0.0);
+	y_target = y_img_out_old;
+      }
+      else {
+	larcv::Image2D ynew( crop_metas[2] );
+	ynew.paint(0.0);
+	std::swap( y_img_out_new, ynew );
+	y_target = &y_img_out_new;
+      }
+
+      // finally, fill
+      for (int c=0; c<(int)crop_metas[2].cols(); c++) {
+	float cropx = crop_metas[2].pos_x(c);
 	if ( cropx<y1 || cropx>=y2 )
 	  continue;
-	int cropc = ymeta.col(cropx);
-	for (int r=0; r<(int)crop_yp.rows(); r++) {
-	  ytarget.set_pixel( r, c, img_v[2].pixel( t1+r, cropc ) );
+	int cropc = src_metas[2].col(cropx);
+	for (int r=0; r<(int)crop_metas[2].rows(); r++) {
+	  std::cout << "fill ytarget (" << r << "," << c << ")"  << std::endl;
+	  y_target->set_pixel( r, c, img_v[2].pixel( t1+r, cropc ) );
 	}
       }
-      y_img_holder.emplace_back( std::move( ytarget ) );    
     }
 
     float frac_occupied = 0.;
     bool saveimg = true;
 
+    // if we enforce a minimum pixel fraction of the Y-plane
+    // we evaulate that here, setting saveimg flag
     if ( minpixfrac>0 ) {
-      const larcv::Image2D& yimg = y_img_holder[0];
-      for (int row=0; row<(int)yimg.meta().rows(); row++) {
-	for (int col=0; col<(int)yimg.meta().cols(); col++) {
-	  if ( yimg.pixel(row,col)>10.0 )
+      larcv::Image2D* ycount = NULL;
+      if ( copy_imgs )
+	ycount = y_img_out_old;
+      else
+	ycount = &y_img_out_new;
+      
+      for (int row=0; row<(int)ycount->meta().rows(); row++) {
+	for (int col=0; col<(int)ycount->meta().cols(); col++) {
+	  if ( ycount->pixel(row,col)>10.0 )
 	    frac_occupied+=1.0;
 	}
       }
-      frac_occupied /= float(yimg.meta().rows()*yimg.meta().cols());
+      frac_occupied /= float(ycount->meta().rows()*ycount->meta().cols());
 
       if ( frac_occupied<minpixfrac )
 	saveimg = false;
@@ -436,13 +583,27 @@ namespace larcv {
       return false;
     
 
-    larcv::Image2D crop_up = img_v[0].crop( bbox_u );
-    output_imgs.emplace( std::move(crop_up) );
+    // crop and store other planes
+    if ( copy_imgs ) {
+      // we xfer values to existing images in output_imgs
+      larcv::Image2D& crop_up = output_imgs.modimgat( first_outidx+0 );
+      crop_up.modifyMeta( crop_metas[0] );
+      crop_up.copy_region( img_v[0] );
     
-    larcv::Image2D crop_vp = img_v[1].crop( bbox_v );
-    output_imgs.emplace( std::move(crop_vp) );
+      larcv::Image2D& crop_vp = output_imgs.modimgat( first_outidx+1 );
+      crop_vp.modifyMeta( crop_metas[1] );
+      crop_vp.copy_region( img_v[1] );
 
-    output_imgs.emplace( std::move(y_img_holder[0]) );
+      // we already xfer'd values to y-above
+    }
+    else {
+      // we give new image to vector
+      larcv::Image2D crop_up = img_v[0].crop( bbox_vec[0] );
+      output_imgs.emplace( std::move(crop_up) );
+      larcv::Image2D crop_vp = img_v[1].crop( bbox_vec[1] );
+      output_imgs.emplace( std::move(crop_vp) );    
+      output_imgs.emplace( std::move(y_img_out_new) );
+    }
     
     return true;
   }
@@ -600,6 +761,14 @@ namespace larcv {
 	
     return crop_coords;
     
+  }
+
+  void UBSplitDetector::printElapsedTime() {
+    std::cout << "UBSplitDetector::ElapsedTime =========" << std::endl;
+    std::cout << " gen bbox: " << elapsed_genbbox << " secs" << std::endl;
+    std::cout << " alloc img: " << elapsed_alloc << " secs" << std::endl;
+    std::cout << " crop subreg: " << elapsed_crop << " secs" << std::endl;
+    std::cout << "======================================" << std::endl;
   }
 
   

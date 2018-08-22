@@ -61,6 +61,8 @@ namespace larcv {
 				 const std::vector<larcv::Image2D>& img_v,
 				 const int y1, const int y2, bool fill_y_image,
 				 const float minpixfrac,
+				 const int first_outidx,
+				 const bool copy_imgs,
 				 larcv::EventImage2D& output_imgs );
     
     static std::vector<int> defineImageBoundsFromPosZT( const float zwire, const float tmid, const float zwidth, const float dtick,
@@ -68,7 +70,7 @@ namespace larcv {
 							const std::vector<larcv::Image2D>& img_v );
     
 
-    
+    void printElapsedTime();    
 
   private:
 
@@ -87,6 +89,20 @@ namespace larcv {
     bool _randomize_crops;
     int  _randomize_attempts;
     float _randomize_minfracpix;
+    int  _num_expected_crops;
+    bool _numcrops_changed;
+
+    // cropping variables
+    std::vector< std::vector<int> > m_lattice;    //< defines (t,u,v,y) wire coordinates that serve as center of cropped subimages
+    std::vector<larcv::Image2D>     m_coverage_v; //< images used to mark how many times pixels are a part of subimage
+    
+    // timetracking
+    float elapsed_genbbox;
+    float elapsed_crop;
+    float elapsed_alloc;
+    float elapsed_fraccheck;
+    float elapsed_save;
+    
   };
 
   /**
