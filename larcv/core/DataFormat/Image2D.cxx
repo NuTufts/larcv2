@@ -145,9 +145,9 @@ namespace larcv {
     // }
     
     for (size_t c=0; c<ncols; c++) {
-      size_t des_index = meta().index( des_row_start, des_col_start+c );
+      size_t dest_index = meta().index( dest_row_start, dest_col_start+c );
       size_t src_index = src.meta().index( src_row_start, src_col_start+c );
-      memcpy( &_img[des_index], &src.as_vector()[src_index], nrows*sizeof(float) ); // much, much faster
+      memcpy( &_img[dest_index], &src.as_vector()[src_index], nrows*sizeof(float) ); // much, much faster
     }
     
   }
