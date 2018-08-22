@@ -77,6 +77,8 @@ namespace larcv {
     void reverse_copy(size_t row, size_t col, const std::vector<short>& src, size_t nskip=0, size_t num_pixel=0);
     /// Copy a region of the source image
     void copy_region( size_t dest_row_start, size_t dest_col_start, size_t row_start, size_t nrows, size_t col_start, size_t ncols, const larcv::Image2D& src );
+    /// Copy a region of the source image, our meta defines the region we copy
+    void copy_region( const larcv::Image2D& src );
     /// Crop specified region via crop_meta to generate a new larcv::Image2D
     Image2D crop(const ImageMeta& crop_meta) const;
     /// Crop specified region via bbox to generate a new larcv::Image2D
@@ -144,6 +146,9 @@ namespace larcv {
     void eltwise( const Image2D& rhs );
     /// Element-wise multiplication w/ 1D array data
     void eltwise(const std::vector<float>& arr,bool allow_longer=false);
+
+    /// Modify Meta
+    void modifyMeta( const ImageMeta& newmeta );
     
   private:
     std::vector<float> _img;

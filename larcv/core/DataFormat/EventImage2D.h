@@ -57,6 +57,12 @@ namespace larcv {
     void move(std::vector<larcv::Image2D>& image_v)
     { image_v = std::move(_image_v); }
 #endif
+
+    /// Reset stored images with single value
+    void paintall( float value );
+    /// Modify image
+    Image2D& modimgat(ImageIndex_t id);
+    void reserve( size_t s);
     
   private:
 
