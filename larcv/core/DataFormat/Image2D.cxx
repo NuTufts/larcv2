@@ -138,10 +138,16 @@ namespace larcv {
 
   void Image2D::copy_region( size_t dest_row_start, size_t dest_col_start, size_t src_row_start, size_t nrows, size_t src_col_start, size_t ncols, const larcv::Image2D& src ) {
 
-    for (size_t r=0; r<nrows; r++) {
-      for (size_t c=0; c<ncols; c++) {
-	set_pixel( dest_row_start+r, dest_col_start+c, src.pixel(src_row_start+r,src_col_start+c) );
-      }
+    // for (size_t r=0; r<nrows; r++) {
+    //   for (size_t c=0; c<ncols; c++) {
+    // 	set_pixel( dest_row_start+r, dest_col_start+c, src.pixel(src_row_start+r,src_col_start+c) );
+    //   }
+    // }
+    
+    for (size_t c=0; c<ncols; c++) {
+      size_t des_index = meta().index( des_row_start, des_col_start+c );
+      size_t src_index = src.meta().index( src_row_start, src_col_start+c );
+      memcpy( &_img[des_index], &src.as_vector()[src_index], nrows*sizeof(float) ); // much, much faster
     }
     
   }
@@ -208,6 +214,8 @@ namespace larcv {
     // 	set_pixel( des_row_start+r, des_col_start+c, src.pixel(src_row_start+r,src_col_start+c) );
     //   }
     // }
+
+    // use memcpy: this is nearly 100 times faster than above loop!
     // rows are the contiguous dimension
     for (size_t c=0; c<ncols; c++) {
       size_t des_index = meta().index( des_row_start, des_col_start+c );
