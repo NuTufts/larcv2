@@ -60,9 +60,13 @@ namespace larcv {
 
     /// Reset stored images with single value
     void paintall( float value );
-    /// Modify image
+    /// Mutable reference image
     Image2D& modimgat(ImageIndex_t id);
+    /// call reserver for _image_v
     void reserve( size_t s);
+    /// Mutable reference to _image_v
+    std::vector<larcv::Image2D>& as_mod_vector() { return _image_v; }
+
     
   private:
 

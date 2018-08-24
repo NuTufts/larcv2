@@ -108,6 +108,9 @@ namespace larcv {
     void compress(size_t row_count, size_t col_count, CompressionModes_t mode=kSum);
     /// Overlay with another Image2D: overlapped pixel region is merged
     void overlay(const Image2D&, CompressionModes_t mode=kSum);
+    /// 1D mutable reference array getter
+    std::vector<float>& as_mod_vector() { return _img; }
+    
     /// Move data contents out
     std::vector<float>&& move();
     /// Move data contents in
@@ -149,6 +152,11 @@ namespace larcv {
 
     /// Modify Meta
     void modifyMeta( const ImageMeta& newmeta );
+
+    /// Slices: only rows provided, as column dimension not contigious
+    std::vector<float>::iterator row_start( int col ) { return _img.begin()+col*meta().rows(); };
+    std::vector<float>::iterator row_end(   int col ) { return _img.begin()+(col+1)*meta().rows(); };
+    
     
   private:
     std::vector<float> _img;
