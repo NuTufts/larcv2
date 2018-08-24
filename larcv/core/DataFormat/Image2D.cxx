@@ -550,4 +550,21 @@ namespace larcv {
     std::swap(m,_meta);
   }
 
+  std::vector<float> Image2D::timeslice( int row ) const {
+    // returns columns at given row
+    std::vector<float> pixvalues(meta().cols());
+    const int nrows = meta().rows();
+    for ( int i=0; i<(int)meta().cols(); i++ ) {
+      pixvalues[i] = _img[ i*nrows + row ]; // strided access, compiler do your thing!
+    }
+    return pixvalues;
+  }
+
+  void Image2D::rowcopy( size_t row, const std::vector<float>& src ) {
+    const int nrows = meta().rows();
+    int ncols = (meta().cols() < src.size()) ? meta().cols() : src.size();
+    for ( int i=0; i<ncols; i++ )
+      _img[ i*nrows + row ] = src[i];
+  }
+
 }

@@ -158,6 +158,9 @@ namespace larcv {
     std::vector<float>::iterator row_end(   int col ) { return _img.begin()+(col+1)*meta().rows(); };
     std::vector<float>::const_iterator row_start_const( int col ) const { return _img.begin()+col*meta().rows(); };
     std::vector<float>::const_iterator row_end_const( int col ) const   { return _img.begin()+(col+1)*meta().rows(); };
+    std::vector<float> timeslice( int row ) const;
+    void rowcopy(size_t row, const std::vector<float>& src);
+
     
     
   private:

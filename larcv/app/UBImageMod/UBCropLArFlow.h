@@ -130,7 +130,8 @@ namespace larcv {
     struct FlowOffset {
       FlowOffset( float offset ) { _offset = offset; };
       float _offset;
-      float operator()( const float& flo_value ) const { return flo_value+_offset; };      
+      float operator()( const float& flo_value ) const {return flo_value+_offset; };
+	
     };
     struct ModVisibility {
       ModVisibility( float target_xmin, float target_xmax, float col ) { _xmin = target_xmin; _xmax = target_xmax; _col = col; };
@@ -140,11 +141,10 @@ namespace larcv {
       float operator()( const float& flo_value, const float& vis_value ) {
 	// too much branching?
 	// could break up intro separate pieces
-	if ( flo_value<=-4000 ) return 0.0; // no-flow value in that pixel
-	if ( vis_value<1.0 ) return 0.0; // don't check visi not 1.0, this means there was dead region or below thresh
+	if ( flo_value<=-4000 ) return -1.0; // no-flow value in that pixel
 	float targetwire = _col+flo_value;
-	if ( targetwire < _xmin || targetwire >=_xmax ) return 0.0;
-	return 1.0;
+	if ( targetwire < _xmin || targetwire >=_xmax ) return -1.0; // goes out of bounds
+	return vis_value;
       };
     };
     struct MaskBelowThreshold {
@@ -160,15 +160,33 @@ namespace larcv {
     };
 
     struct FollowFlow {
-      FollowFlow( const std::vector<float>& data, const int& col ) : _data(data), _col(col) {};
+      FollowFlow( const std::vector<float>& data ) : _data(data) {};
       const std::vector<float>& _data; // target adc data. rows for given col
-      int _col;      
-      float operator()( const float& flow ) {
-	int targetcol = flow+_col;
-	if (flow<=-4000 || targetcol<0 || targetcol>=(int)_data.size() ) return 0;
-	else return _data[targetcol];
+      float operator()( const float& flow, const float& col ) {
+	int targetcol = flow+col;
+	if (flow<=-4000 )
+	  return -1.0;
+	else if ( targetcol<0 || targetcol>=(int)_data.size() )
+	  return 0;
+	else
+	  return _data[targetcol];
       };
     };
+
+    struct MaskFlowToNothing {
+      // masks visibility 
+      MaskFlowToNothing( float threshold, float maskvalue ) { _threshold = threshold; _maskvalue = maskvalue; };
+      float _threshold;
+      float _maskvalue;
+      float operator()( const float& target_adc_value, const float& pixvalue ) {
+	if ( target_adc_value<=-4000 ) return pixvalue; // no flow
+	if ( target_adc_value<_threshold )
+	  return _maskvalue;
+	else
+	  return pixvalue;
+      };
+    };
+    
     
     static int _check_img_counter;
     static const float _NO_FLOW_VALUE_;

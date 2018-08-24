@@ -398,6 +398,10 @@ namespace larcv {
       visi.paint(0.0);
       cropped_visi.emplace_back( std::move(visi) );
     }
+
+    std::vector<float> colindex( meta.cols() );
+    for (int i=0; i<(int)meta.cols(); i++)
+      colindex[i] = i;
         
     // loop over the two targets
     for (int i=0; i<2; i++) {
@@ -416,6 +420,7 @@ namespace larcv {
 
       // VECTORIZED VERSION
       if ( _fusevector ) {
+	
 	std::vector<float> colindex(out_flo.meta().cols());
 	for ( int i=0; i<(int)colindex.size(); i++ )
 	  colindex[i] = i;
@@ -426,53 +431,74 @@ namespace larcv {
 	
 	// determine flow offset
 	// the difference in pixels of the x-origin of the source and target image
-	float _flowoffset = (float)srcmeta.col(out_flo.meta().min_x()) - (float)srcmeta.col(target_meta[i]->min_x());
+	float source_xmin_insrc = srcmeta.col(out_flo.meta().min_x());
+	float target_xmin_insrc = srcmeta.col(target_meta[i]->min_x());
+	float _flowoffset = int(source_xmin_insrc - target_xmin_insrc);
 	float target_xmin = target_meta[i]->min_x();
 	float target_xmax = target_meta[i]->max_x();
 	//std::cout << "Flow offset=" << _flowoffset << std::endl;
 	
-	// mask below threshold
+	// mask below threshold@src  (flow)
 	const std::vector<float>& adcimg_asvec = adcimg.as_vector();
 	std::transform( adcimg_asvec.begin(), adcimg_asvec.end(),
 			out_flo.as_vector().begin(),
 			out_flo.as_mod_vector().begin(),
 			MaskBelowThreshold( thresholds[src_plane], UBCropLArFlow::_NO_FLOW_VALUE_ ) );
-	
-	// rows are contiguous
-	std::vector<float> col_axis  = out_vis.meta().xaxis();      
+
+	// mask below threshold  (visibility)
+	std::transform( adcimg_asvec.begin(), adcimg_asvec.end(),
+			out_vis.as_vector().begin(),
+			out_vis.as_mod_vector().begin(),
+			MaskBelowThreshold( thresholds[src_plane], -1.0 ) );
+
+
+	// adjust the vis: set to -1.0 if flow goes out of bounds
+	std::vector<float> col_axis  = out_vis.meta().xaxis(); // wire-coordinate of source image
 	for ( size_t c=0; c<out_vis.meta().cols(); c++) {
 	  std::transform( out_flo.row_start(c), out_flo.row_end(c),
 			  out_vis.row_start(c), 
 			  out_vis.row_start(c),
 			  ModVisibility(target_xmin,target_xmax, col_axis[c] ) );
-	}
-	
-	// we can update the flow in one shot
+	}	
+		
+	// adjust flow for the cropping	
 	std::vector<float>& flo_img_v = out_flo.as_mod_vector();
 	std::transform( flo_img_v.begin(), flo_img_v.end(),
 			flo_img_v.begin(),
 			FlowOffset(_flowoffset) );
+
 	
-	// finally mask the flow value where visibility is now-zero
+	// finally mask the flow value where visibility is bad
 	std::transform( out_vis.as_vector().begin(), out_vis.as_vector().end(),
 			out_flo.as_vector().begin(),
 			out_flo.as_mod_vector().begin(),
-			MaskBelowThreshold( 1.0, UBCropLArFlow::_NO_FLOW_VALUE_ ) );
+			MaskBelowThreshold( -0.5, UBCropLArFlow::_NO_FLOW_VALUE_ ) );
+	
 	
 	// need to mask when target pixel adc is below threshold. how to vectorize?
 	// first get adc values from target image by following flow
-	std::vector<float> flowadc( out_flo.as_vector().size(), UBCropLArFlow::_NO_FLOW_VALUE_ );
-	for ( int c=0; c<(int)out_flo.meta().cols(); c++ ) {
-	  std::vector<float> target_adc_v( target_adc.row_start_const(c), target_adc.row_end_const(c) );
-	  std::transform( out_flo.row_start(c), out_flo.row_end(c),
-			  flowadc.begin()+c*out_flo.meta().rows(),
-			  FollowFlow( target_adc_v, c ) );
+	larcv::Image2D flowadc( out_flo.meta() );
+	flowadc.paint(0.0);
+	std::vector<float> flowadc_cols( out_flo.meta().cols() );
+	for ( int r=0; r<(int)out_flo.meta().rows(); r++ ) {
+	  // flow comes for source pixels happening at same column for some set time
+	  // the access for different times, different columns. need 2D access
+	  // if we eval for flow @ same time, then differnt columns access at different columsn, 1D access
+	  std::vector<float> target_adc_v = target_adc.timeslice(r);
+	  std::vector<float> outflo_row   = out_flo.timeslice(r);
+	  std::transform( outflo_row.begin(), outflo_row.end(),
+			  colindex.begin(),
+			  flowadc_cols.begin(),
+			  FollowFlow( target_adc_v ) );
+	  flowadc.rowcopy( r, flowadc_cols );
 	}
+	
 	// next, mask flow values when targetadc is below threshold
-	std::transform( flowadc.begin(), flowadc.end(),
+	std::transform( flowadc.as_vector().begin(), flowadc.as_vector().end(),
 			out_vis.as_vector().begin(),
 			out_vis.as_mod_vector().begin(),
-			MaskBelowThreshold( thresholds[trgt_pl], 0.0 ) );
+			MaskFlowToNothing( thresholds[trgt_pl], 0.0 ) );
+
 
       }
       else {
@@ -726,7 +752,9 @@ namespace larcv {
 	  }
 	  catch (std::exception& e) {
 	    goodtarget = false;
-	    std::cout << __PRETTY_FUNCTION__ << ":" << __FILE__ << "." << __LINE__ << ": good vis pixel flow out of bounds. "
+	    std::cout << __PRETTY_FUNCTION__ << ":" << __FILE__ << "." << __LINE__ << ": "
+		      << " good vis pixel@src(r,c)=(" << r << "," << c << ") "
+		      << " flow out of bounds. "
 		      << "flow: " << c << "->" << targetc 
 		      << "\n\t"
 		      << e.what()
@@ -795,20 +823,22 @@ namespace larcv {
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
 	  << "  ncorrect/nabove=" << float(ncorrect[i])/float(nabove[i]) << std::endl;
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
-	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "
-	  << "  badvisi/nabove: "      << float(nwrong_badvisi[i])/float(nabove[i]) << std::endl;
+	  << " --- errors --- " << std::endl;
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
 	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "
-	  << "  visbelow/nabove: "      << float(nwrong_visbelow[i])/float(nvis[i]) << std::endl;
+	  << "  nbadvisi(@target)=" << nwrong_badvisi[i] << " badvisi/nabove: "      << float(nwrong_badvisi[i])/float(nabove[i]) << std::endl;
+	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
+	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "
+	  << "  nvisbelow(@src)=" << nwrong_visbelow[i] << "  visbelow/nabove: "      << float(nwrong_visbelow[i])/float(nvis[i]) << std::endl;
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
 	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "      
-	  << "  flow2nothing/nabove: " << float(nwrong_flow2nothing[i])/float(nabove[i]) << std::endl;
+	  << "  nflow2nothing(@target)=" << nwrong_flow2nothing[i] << "  flow2nothing/nabove: " << float(nwrong_flow2nothing[i])/float(nabove[i]) << std::endl;
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)      
 	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "      
-	  << "  flow2OB/nabove: " << float(nwrong_flowob[i])/float(nabove[i]) << std::endl;
+	  << "  nflow2OB=" << nwrong_flowob[i] << "  flow2OB/nabove: " << float(nwrong_flowob[i])/float(nabove[i]) << std::endl;
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
 	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "      
-	  << "  nolabel/nabove: " << float(nwrong_nolabel[i])/float(nabove[i]) << std::endl;
+	  << "  nwrong_nolabel(@src)=" << nwrong_nolabel[i] << "  nolabel/nabove: " << float(nwrong_nolabel[i])/float(nabove[i]) << std::endl;
       }
     }
       

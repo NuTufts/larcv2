@@ -61,6 +61,7 @@ LimitOverlap: false
 RequireMinGoodPixels: false
 MaxOverlapFraction: 0.2
 IsMC: true
+UseVectorizedCode: true
 """
 
 lfcfg = open("ublarflowcrop.cfg",'w')
