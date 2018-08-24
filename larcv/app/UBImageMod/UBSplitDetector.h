@@ -70,7 +70,8 @@ namespace larcv {
 							const std::vector<larcv::Image2D>& img_v );
     
 
-    void printElapsedTime();    
+    void printElapsedTime();
+    void clearElapsedTime();
 
   private:
 
@@ -97,12 +98,12 @@ namespace larcv {
     std::vector<larcv::Image2D>     m_coverage_v; //< images used to mark how many times pixels are a part of subimage
     
     // timetracking
-    float elapsed_genbbox;
-    float elapsed_crop;
-    float elapsed_alloc;
-    float elapsed_fraccheck;
-    float elapsed_save;
-    
+    static float elapsed_genbbox;
+    static float elapsed_crop;
+    static float elapsed_alloc;
+    static float elapsed_fraccheck;
+    static float elapsed_save;
+    static int   num_calls;
   };
 
   /**

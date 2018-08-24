@@ -18,6 +18,13 @@ namespace larcv {
 
   static UBSplitDetectorProcessFactory __global_UBSplitDetectorProcessFactory__;
 
+  float UBSplitDetector::elapsed_genbbox = 0;
+  float UBSplitDetector::elapsed_crop = 0;
+  float UBSplitDetector::elapsed_alloc = 0;
+  float UBSplitDetector::elapsed_fraccheck = 0;
+  float UBSplitDetector::elapsed_save = 0;
+  int   UBSplitDetector::num_calls = 0;
+  
   UBSplitDetector::UBSplitDetector(const std::string name)
     : ProcessBase(name)
   {
@@ -29,7 +36,7 @@ namespace larcv {
     elapsed_alloc = 0;
     elapsed_fraccheck = 0;
     elapsed_save = 0;
-    
+    num_calls = 0;
   }
 
   void UBSplitDetector::configure(const PSet& cfg)
@@ -367,6 +374,8 @@ namespace larcv {
     // 	outev_coverage->emplace( std::move(coverage_v[p]) );
     //   }
     // }
+    num_calls++;
+    printElapsedTime();
     
     return true;
   }
@@ -517,7 +526,17 @@ namespace larcv {
 	y_img_out_old->copy_region( img_v[2] ); // copy pixels within this region
       }
       else {
-	y_img_out_new = img_v[2].crop( bbox_vec[2] );
+	std::clock_t begin = std::clock();
+	larcv::Image2D newyimg( crop_metas[2] );
+	std::clock_t end  = std::clock();
+	elapsed_alloc += double(end-begin)/CLOCKS_PER_SEC;
+
+	//begin = std::clock();		
+	newyimg.copy_region( img_v[2] );
+	std::swap( newyimg, y_img_out_new );
+	//end = std::clock();
+	//elapsed_crop += double(end-begin)/CLOCKS_PER_SEC;
+	//y_img_out_new = img_v[2].crop( bbox_vec[2] ); // shitty?
       }
     }
     else {
@@ -597,11 +616,21 @@ namespace larcv {
       // we already xfer'd values to y-above
     }
     else {
-      // we give new image to vector
-      larcv::Image2D crop_up = img_v[0].crop( bbox_vec[0] );
+      // we give new image to vector      
+      //larcv::Image2D crop_up = img_v[0].crop( bbox_vec[0] );
+      //larcv::Image2D crop_vp = img_v[1].crop( bbox_vec[1] );
+
+      std::clock_t begin = std::clock();
+      larcv::Image2D crop_up( crop_metas[0] );
+      larcv::Image2D crop_vp( crop_metas[1] );
+      std::clock_t end  = std::clock();
+      elapsed_alloc += double(end-begin)/CLOCKS_PER_SEC;
+
+      crop_up.copy_region( img_v[0] );
+      crop_vp.copy_region( img_v[1] );      
+      
       output_imgs.emplace( std::move(crop_up) );
-      larcv::Image2D crop_vp = img_v[1].crop( bbox_vec[1] );
-      output_imgs.emplace( std::move(crop_vp) );    
+      output_imgs.emplace( std::move(crop_vp) );      
       output_imgs.emplace( std::move(y_img_out_new) );
     }
     
@@ -763,12 +792,19 @@ namespace larcv {
     
   }
 
+  void UBSplitDetector::clearElapsedTime() {
+    elapsed_genbbox = 0.0;
+    elapsed_alloc = 0.0;
+    elapsed_crop = 0.0;
+    num_calls = 0;
+  }
+  
   void UBSplitDetector::printElapsedTime() {
-    std::cout << "UBSplitDetector::ElapsedTime =========" << std::endl;
-    std::cout << " gen bbox: " << elapsed_genbbox << " secs" << std::endl;
-    std::cout << " alloc img: " << elapsed_alloc << " secs" << std::endl;
-    std::cout << " crop subreg: " << elapsed_crop << " secs" << std::endl;
-    std::cout << "======================================" << std::endl;
+    LARCV_INFO() << "UBSplitDetector::ElapsedTime ========================" << std::endl;
+    LARCV_INFO() << " gen bbox: " << elapsed_genbbox << " secs (ave " << elapsed_genbbox/num_calls << ")" << std::endl;
+    LARCV_INFO() << " alloc img: " << elapsed_alloc << " secs (ave " << elapsed_alloc/num_calls << ")" << std::endl;
+    LARCV_INFO() << " crop subreg: " << elapsed_crop << " secs (ave " << elapsed_crop/num_calls << ")" << std::endl;
+    LARCV_INFO() << "=====================================================" << std::endl;
   }
 
   
