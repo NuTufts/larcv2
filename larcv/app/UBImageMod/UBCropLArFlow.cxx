@@ -228,7 +228,7 @@ namespace larcv {
 	}
 	float frac_overlap = npix_overlap/float(cropped_src_meta.rows()*cropped_src_meta.cols());
 	if ( frac_overlap>_max_overlap_fraction ) {
-	  LARCV_NORMAL() << "Skipping overlapping image. Frac overlap=" << frac_overlap << "." << std::endl;
+	  LARCV_INFO() << "Skipping overlapping image. Frac overlap=" << frac_overlap << "." << std::endl;
 	  continue;
 	}
 	//std::cout << "Overlap fraction: " << frac_overlap << std::endl;
