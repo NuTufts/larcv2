@@ -124,6 +124,7 @@ namespace larcv {
     int   _verbosity_;
     bool  _save_output;
     bool  _is_mc;
+    static bool  _fusevector;
 
     // algorithms
     struct FlowOffset {
@@ -155,6 +156,17 @@ namespace larcv {
 	  return _maskvalue;
 	else
 	  return pixvalue;
+      };
+    };
+
+    struct FollowFlow {
+      FollowFlow( const std::vector<float>& data, const int& col ) : _data(data), _col(col) {};
+      const std::vector<float>& _data; // target adc data. rows for given col
+      int _col;      
+      float operator()( const float& flow ) {
+	int targetcol = flow+_col;
+	if (flow<=-4000 || targetcol<0 || targetcol>=(int)_data.size() ) return 0;
+	else return _data[targetcol];
       };
     };
     

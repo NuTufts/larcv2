@@ -23,6 +23,7 @@ namespace larcv {
 
   static UBCropLArFlowProcessFactory __global_UBCropLArFlowProcessFactory__;
   int   UBCropLArFlow::_check_img_counter = 0;
+  bool  UBCropLArFlow::_fusevector = false;
   const float UBCropLArFlow::_NO_FLOW_VALUE_ = -4000;
   int* UBCropLArFlow::_colors = NULL;
   
@@ -44,7 +45,8 @@ namespace larcv {
     _output_flo_producer    = cfg.get<std::string>("OutputCroppedFlowProducer");
     _output_meta_producer   = cfg.get<std::string>("OutputCroppedMetaProducer");    
     _output_filename        = cfg.get<std::string>("OutputFilename"); // creates new larcv file to store cropped images, if SaveOuput=true
-    _is_mc                  = cfg.get<bool>("IsMC"); // if we expect to have truth visi and flow 
+    _is_mc                  = cfg.get<bool>("IsMC"); // if we expect to have truth visi and flow
+    UBCropLArFlow::_fusevector = cfg.get<bool>("UseVectorizedCode",false); // optimization (experimental)
 
     _max_images             = cfg.get<int>("MaxImages",-1); // maximum number of images to save
     _thresholds_v           = cfg.get< std::vector<float> >("Thresholds",std::vector<float>(3,10.0) ); // ADC thresholds for each plane
@@ -412,95 +414,112 @@ namespace larcv {
       out_vis.copy_region( source_vis );
       out_flo.copy_region( source_flo );
 
-      std::vector<float> colindex(out_flo.meta().cols());
-      for ( int i=0; i<(int)colindex.size(); i++ )
-	colindex[i] = i;
-      
-      // now, we must update, because
-      //  (1) some pixels might not be visible
-      //  (2) we need to remove the offset
+      // VECTORIZED VERSION
+      if ( _fusevector ) {
+	std::vector<float> colindex(out_flo.meta().cols());
+	for ( int i=0; i<(int)colindex.size(); i++ )
+	  colindex[i] = i;
+	
+	// now, we must update, because
+	//  (1) some pixels might not be visible
+	//  (2) we need to remove the offset
+	
+	// determine flow offset
+	// the difference in pixels of the x-origin of the source and target image
+	float _flowoffset = (float)srcmeta.col(out_flo.meta().min_x()) - (float)srcmeta.col(target_meta[i]->min_x());
+	float target_xmin = target_meta[i]->min_x();
+	float target_xmax = target_meta[i]->max_x();
+	//std::cout << "Flow offset=" << _flowoffset << std::endl;
+	
+	// mask below threshold
+	const std::vector<float>& adcimg_asvec = adcimg.as_vector();
+	std::transform( adcimg_asvec.begin(), adcimg_asvec.end(),
+			out_flo.as_vector().begin(),
+			out_flo.as_mod_vector().begin(),
+			MaskBelowThreshold( thresholds[src_plane], UBCropLArFlow::_NO_FLOW_VALUE_ ) );
+	
+	// rows are contiguous
+	std::vector<float> col_axis  = out_vis.meta().xaxis();      
+	for ( size_t c=0; c<out_vis.meta().cols(); c++) {
+	  std::transform( out_flo.row_start(c), out_flo.row_end(c),
+			  out_vis.row_start(c), 
+			  out_vis.row_start(c),
+			  ModVisibility(target_xmin,target_xmax, col_axis[c] ) );
+	}
+	
+	// we can update the flow in one shot
+	std::vector<float>& flo_img_v = out_flo.as_mod_vector();
+	std::transform( flo_img_v.begin(), flo_img_v.end(),
+			flo_img_v.begin(),
+			FlowOffset(_flowoffset) );
+	
+	// finally mask the flow value where visibility is now-zero
+	std::transform( out_vis.as_vector().begin(), out_vis.as_vector().end(),
+			out_flo.as_vector().begin(),
+			out_flo.as_mod_vector().begin(),
+			MaskBelowThreshold( 1.0, UBCropLArFlow::_NO_FLOW_VALUE_ ) );
+	
+	// need to mask when target pixel adc is below threshold. how to vectorize?
+	// first get adc values from target image by following flow
+	std::vector<float> flowadc( out_flo.as_vector().size(), UBCropLArFlow::_NO_FLOW_VALUE_ );
+	for ( int c=0; c<(int)out_flo.meta().cols(); c++ ) {
+	  std::vector<float> target_adc_v( target_adc.row_start_const(c), target_adc.row_end_const(c) );
+	  std::transform( out_flo.row_start(c), out_flo.row_end(c),
+			  flowadc.begin()+c*out_flo.meta().rows(),
+			  FollowFlow( target_adc_v, c ) );
+	}
+	// next, mask flow values when targetadc is below threshold
+	std::transform( flowadc.begin(), flowadc.end(),
+			out_vis.as_vector().begin(),
+			out_vis.as_mod_vector().begin(),
+			MaskBelowThreshold( thresholds[trgt_pl], 0.0 ) );
 
-      // determine flow offset
-      // the difference in pixels of the x-origin of the source and target image
-      float _flowoffset = (float)srcmeta.col(out_flo.meta().min_x()) - (float)srcmeta.col(target_meta[i]->min_x());
-      float target_xmin = target_meta[i]->min_x();
-      float target_xmax = target_meta[i]->max_x();
-      //std::cout << "Flow offset=" << _flowoffset << std::endl;
-
-      // mask below threshold
-      const std::vector<float>& adcimg_asvec = adcimg.as_vector();
-      // std::transform( adcimg_asvec.begin(), adcimg_asvec.end(),
-      // 		      out_vis.as_vector().begin(),
-      // 		      out_vis.as_mod_vector().begin(),
-      // 		      MaskBelowThreshold( thresholds[src_plane], 0.0 ) );
-      std::transform( adcimg_asvec.begin(), adcimg_asvec.end(),
-      		      out_flo.as_vector().begin(),
-      		      out_flo.as_mod_vector().begin(),
-      		      MaskBelowThreshold( thresholds[src_plane], UBCropLArFlow::_NO_FLOW_VALUE_ ) );
-      
-      // rows are contiguous
-      std::vector<float> col_axis  = out_vis.meta().xaxis();      
-      for ( size_t c=0; c<out_vis.meta().cols(); c++) {
-      	std::transform( out_flo.row_start(c), out_flo.row_end(c),
-			out_vis.row_start(c), 
-      			out_vis.row_start(c),
-      			ModVisibility(target_xmin,target_xmax, col_axis[c] ) );
       }
-
-      // we can update the flow in one shot
-      std::vector<float>& flo_img_v = out_flo.as_mod_vector();
-      std::transform( flo_img_v.begin(), flo_img_v.end(),
-      		      flo_img_v.begin(),
-      		      FlowOffset(_flowoffset) );
-
-      // finally mask the flow value where visibility is now-zero
-      std::transform( out_vis.as_vector().begin(), out_vis.as_vector().end(),
-      		      out_flo.as_vector().begin(),
-      		      out_flo.as_mod_vector().begin(),
-      		      MaskBelowThreshold( 1.0, UBCropLArFlow::_NO_FLOW_VALUE_ ) );
+      else {
+	// Use scalar code
       
-      /* we try to avoid this loop
-      // loop over rows and cols
-      for (int r=0; r<(int)meta.rows(); r++) {
-    
-	float tick  = meta.pos_y(r);
-	int src_row = srcmeta.row(tick);
-	
-	for (int c=0; c<(int)meta.cols(); c++) {
+	// we try to avoid this loop
+	// loop over rows and cols
+	for (int r=0; r<(int)meta.rows(); r++) {
 	  
-	  float wire  = meta.pos_x(c);
-	  int src_col = srcmeta.col(wire);
-	
-	  // flow and visi values (in the source coordinate system)
-	  float visi = source_vis.pixel( src_row, src_col );
-	  float flow = source_flo.pixel( src_row, src_col );
-
-	  // is the target pixel in the cropped image?
-	  float target_wire = (wire + flow);
-	  if ( target_wire<target_meta[i]->min_x() || target_wire>=target_meta[i]->max_x() ) {
-	    // outside the target cropped image
-	    out_flo.set_pixel( r, c, UBCropLArFlow::_NO_FLOW_VALUE_ );
-	    out_vis.set_pixel( r, c, 0.0 );
-	    // this shouldn't happen unless a mistake?
-	  }
-	  else {
-
-	    // inside. need to adjust the flow.
-	    int target_col = target_meta[i]->col( target_wire );
-	    float target_adc = croppedadc_v[ targetplanes[src_plane][i] ]->pixel( r, target_col );
-									
-	    float target_flow = target_col - c;
-	    out_flo.set_pixel( r, c, target_flow );
-	    out_vis.set_pixel( r, c, visi );
-
-	    if ( target_adc<thresholds[ targetplanes[src_plane][i] ] )
+	  float tick  = meta.pos_y(r);
+	  int src_row = srcmeta.row(tick);
+	  
+	  for (int c=0; c<(int)meta.cols(); c++) {
+	    
+	    float wire  = meta.pos_x(c);
+	    int src_col = srcmeta.col(wire);
+	    
+	    // flow and visi values (in the source coordinate system)
+	    float visi = source_vis.pixel( src_row, src_col );
+	    float flow = source_flo.pixel( src_row, src_col );
+	    
+	    // is the target pixel in the cropped image?
+	    float target_wire = (wire + flow);
+	    if ( target_wire<target_meta[i]->min_x() || target_wire>=target_meta[i]->max_x() ) {
+	      // outside the target cropped image
+	      out_flo.set_pixel( r, c, UBCropLArFlow::_NO_FLOW_VALUE_ );
 	      out_vis.set_pixel( r, c, 0.0 );
-
-	  }
-
-	}//end of loop over cols
-      }//end of loop over rows
-      */
+	      // this shouldn't happen unless a mistake?
+	    }
+	    else {
+	      
+	      // inside. need to adjust the flow.
+	      int target_col = target_meta[i]->col( target_wire );
+	      float target_adc = croppedadc_v[ targetplanes[src_plane][i] ]->pixel( r, target_col );
+	      
+	      float target_flow = target_col - c;
+	      out_flo.set_pixel( r, c, target_flow );
+	      out_vis.set_pixel( r, c, visi );
+	      
+	      if ( target_adc<thresholds[ targetplanes[src_plane][i] ] )
+		out_vis.set_pixel( r, c, 0.0 );
+	      
+	    }
+	    
+	  }//end of loop over cols
+	}//end of loop over rows
+      }//end of if vectorize/scalar code
       
       // // max pool, if desired
       // if ( do_maxpool && (row_ds_factor>1 || col_ds_factor>1) ) {

@@ -156,6 +156,8 @@ namespace larcv {
     /// Slices: only rows provided, as column dimension not contigious
     std::vector<float>::iterator row_start( int col ) { return _img.begin()+col*meta().rows(); };
     std::vector<float>::iterator row_end(   int col ) { return _img.begin()+(col+1)*meta().rows(); };
+    std::vector<float>::const_iterator row_start_const( int col ) const { return _img.begin()+col*meta().rows(); };
+    std::vector<float>::const_iterator row_end_const( int col ) const   { return _img.begin()+(col+1)*meta().rows(); };
     
     
   private:
