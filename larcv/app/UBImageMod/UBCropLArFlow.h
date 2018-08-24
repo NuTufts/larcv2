@@ -30,6 +30,7 @@ namespace larcv {
      User defined class UBCropLArFlow ... these comments are used to generate
      doxygen documentation!
   */
+  
   class UBCropLArFlow : public ProcessBase {
 
   public:
@@ -52,7 +53,7 @@ namespace larcv {
     // functions
     static void make_cropped_flow_images( const int src_plane,
 					  const larcv::ImageMeta& srcmeta,
-					  std::vector<larcv::Image2D>& croppedadc_v,
+					  const std::vector<const larcv::Image2D* >& croppedadc_v,
 					  const std::vector<larcv::Image2D>& srcflow,
 					  const std::vector<larcv::Image2D>& srcvisi,
 					  const std::vector<float>& thresholds,
@@ -62,19 +63,26 @@ namespace larcv {
 					  const larcv::logger* log=NULL );
     
     static std::vector<float> check_cropped_images( const int src_plane,
-						    const std::vector<larcv::Image2D>& cropped_adc_v,
+						    const std::vector<const larcv::Image2D*>& croppedadc_v,
 						    const std::vector<float>& thresholds,
 						    const std::vector<larcv::Image2D>& cropped_flow,
 						    const std::vector<larcv::Image2D>& cropped_visi,
 						    const bool visualize_flow,				      
 						    const larcv::logger* log=NULL, const int verbosity=2 );
+    
+    static void downsample_crops( const std::vector<larcv::Image2D*>& cropped_adc_v,
+				  const std::vector<larcv::Image2D>& cropped_flow_v,
+				  const std::vector<larcv::Image2D>& cropped_visi_v,
+				  std::vector<larcv::Image2D>& downsampled_adc_v,
+				  std::vector<larcv::Image2D>& downsampled_flow_v,
+				  std::vector<larcv::Image2D>& downsampled_visi_v );
 
-    static void maxPool( const int row_downsample_factor, const int col_downsample_factor,
-			 const larcv::Image2D& src_adc, const larcv::Image2D& target_adc,
-			 const larcv::Image2D& flow, const larcv::Image2D& visi,
-			 const std::vector<float>& thresholds,
-			 larcv::Image2D& ds_src_adc, larcv::Image2D& ds_target_adc,
-			 larcv::Image2D& ds_flow, larcv::Image2D& ds_visi );
+    void maxPool( const int row_downsample_factor, const int col_downsample_factor,
+		  const larcv::Image2D& src_adc, const larcv::Image2D& target_adc,
+		  const larcv::Image2D& flow, const larcv::Image2D& visi,
+		  const std::vector<float>& thresholds,
+		  larcv::Image2D& ds_src_adc, larcv::Image2D& ds_target_adc,
+		  larcv::Image2D& ds_flow, larcv::Image2D& ds_visi );
     
     
     // ----------------------------------------------------------------------
@@ -117,9 +125,46 @@ namespace larcv {
     bool  _save_output;
     bool  _is_mc;
 
-
+    // algorithms
+    struct FlowOffset {
+      FlowOffset( float offset ) { _offset = offset; };
+      float _offset;
+      float operator()( const float& flo_value ) const { return flo_value+_offset; };      
+    };
+    struct ModVisibility {
+      ModVisibility( float target_xmin, float target_xmax, float col ) { _xmin = target_xmin; _xmax = target_xmax; _col = col; };
+      float _xmin;
+      float _xmax;
+      float _col;
+      float operator()( const float& flo_value, const float& vis_value ) {
+	// too much branching?
+	// could break up intro separate pieces
+	if ( flo_value<=-4000 ) return 0.0; // no-flow value in that pixel
+	if ( vis_value<1.0 ) return 0.0; // don't check visi not 1.0, this means there was dead region or below thresh
+	float targetwire = _col+flo_value;
+	if ( targetwire < _xmin || targetwire >=_xmax ) return 0.0;
+	return 1.0;
+      };
+    };
+    struct MaskBelowThreshold {
+      MaskBelowThreshold( float threshold, float maskvalue ) { _threshold = threshold; _maskvalue = maskvalue; };
+      float _threshold;
+      float _maskvalue;
+      float operator()( const float& adc_value, const float& pixvalue ) {
+	if ( adc_value<_threshold )
+	  return _maskvalue;
+	else
+	  return pixvalue;
+      };
+    };
+    
     static int _check_img_counter;
     static const float _NO_FLOW_VALUE_;
+
+    // color palette for visualization
+    static void setBWRPalette();
+    static void setRainbowPalette();
+    static int* _colors;
   };
 
   /**

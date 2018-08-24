@@ -2,6 +2,7 @@
 #define __UBCROPLARFLOW_CXX__
 
 #include <sstream>
+#include <algorithm>
 
 #include "UBCropLArFlow.h"
 #include "larcv/core/DataFormat/EventBBox.h"
@@ -23,6 +24,7 @@ namespace larcv {
   static UBCropLArFlowProcessFactory __global_UBCropLArFlowProcessFactory__;
   int   UBCropLArFlow::_check_img_counter = 0;
   const float UBCropLArFlow::_NO_FLOW_VALUE_ = -4000;
+  int* UBCropLArFlow::_colors = NULL;
   
   UBCropLArFlow::UBCropLArFlow(const std::string name)
     : ProcessBase(name)
@@ -32,20 +34,20 @@ namespace larcv {
   {
 
     _verbosity_             = cfg.get<int>("Verbosity");
-    _input_bbox_producer    = cfg.get<std::string>("InputBBoxProducer");
-    _input_adc_producer     = cfg.get<std::string>("InputADCProducer");
-    _input_cropped_producer = cfg.get<std::string>("InputCroppedADCProducer");
-    _input_vis_producer     = cfg.get<std::string>("InputVisiProducer");
-    _input_flo_producer     = cfg.get<std::string>("InputFlowProducer");
-    _output_adc_producer    = cfg.get<std::string>("OutputCroppedADCProducer");
+    _input_adc_producer     = cfg.get<std::string>("InputADCProducer"); // whole image
+    _input_bbox_producer    = cfg.get<std::string>("InputBBoxProducer");  // from UBSplitDetector
+    _input_cropped_producer = cfg.get<std::string>("InputCroppedADCProducer"); // from UBSplitDetector
+    _input_vis_producer     = cfg.get<std::string>("InputVisiProducer"); // whole image with visi truth
+    _input_flo_producer     = cfg.get<std::string>("InputFlowProducer"); // whole image with flow truth
+    _output_adc_producer    = cfg.get<std::string>("OutputCroppedADCProducer");  
     _output_vis_producer    = cfg.get<std::string>("OutputCroppedVisiProducer");
     _output_flo_producer    = cfg.get<std::string>("OutputCroppedFlowProducer");
     _output_meta_producer   = cfg.get<std::string>("OutputCroppedMetaProducer");    
-    _output_filename        = cfg.get<std::string>("OutputFilename");
-    _is_mc                  = cfg.get<bool>("IsMC");
+    _output_filename        = cfg.get<std::string>("OutputFilename"); // creates new larcv file to store cropped images, if SaveOuput=true
+    _is_mc                  = cfg.get<bool>("IsMC"); // if we expect to have truth visi and flow 
 
-    _max_images             = cfg.get<int>("MaxImages",-1);
-    _thresholds_v           = cfg.get< std::vector<float> >("Thresholds",std::vector<float>(3,10.0) );
+    _max_images             = cfg.get<int>("MaxImages",-1); // maximum number of images to save
+    _thresholds_v           = cfg.get< std::vector<float> >("Thresholds",std::vector<float>(3,10.0) ); // ADC thresholds for each plane
 
     // Max pooling. Shrink image by some downsampling factor. must be factor of image size.
     _do_maxpool             = cfg.get<bool>("DoMaxPool",false);
@@ -59,11 +61,11 @@ namespace larcv {
     }
 
     // minimum pixel requirements
-    _require_min_goodpixels = cfg.get<bool>("RequireMinGoodPixels");
+    _require_min_goodpixels = cfg.get<bool>("RequireMinGoodPixels"); // minimum number of pixels in Y-plane that need to be above threshold
     
     // sparsity requirement: prevent cropping over the same regions
-    _limit_overlap        = cfg.get<bool>("LimitOverlap",false);
-    _max_overlap_fraction = cfg.get<float>("MaxOverlapFraction", 0.5 );
+    _limit_overlap        = cfg.get<bool>("LimitOverlap",false); // prevents random crops from overlapping by some fraction
+    _max_overlap_fraction = cfg.get<float>("MaxOverlapFraction", 0.5 ); // fraction random crops can overlap
 
     // debug options
     _check_flow             = cfg.get<bool>("CheckFlow",false);      // output to screen, checks of cropped images
@@ -72,7 +74,7 @@ namespace larcv {
       gStyle->SetOptStat(0);
 
     // save output
-    _save_output = cfg.get<bool>("SaveOutput");
+    _save_output = cfg.get<bool>("SaveOutput"); // save cropped images to _output_filename
     
     // output file
     if ( _save_output ) {
@@ -96,15 +98,15 @@ namespace larcv {
     // ---------------------------------------------------------------
     // get data
 
-    // input ADC
+    // input ADC: Whole image
     auto ev_in_adc  = (larcv::EventImage2D*)(mgr.get_data("image2d", _input_adc_producer));
     if (!ev_in_adc) {
       LARCV_CRITICAL() << "No Input ADC Image2D found with a name: " << _input_adc_producer << std::endl;
       throw larbys();
     }
-    const std::vector< larcv::Image2D >& img_v = ev_in_adc->image2d_array();
+    const std::vector< larcv::Image2D >& img_v = ev_in_adc->as_vector();
 
-    // input visibility/matchability
+    // input visibility/matchability (whole image)
     larcv::EventImage2D* ev_in_vis = NULL;
     const std::vector< larcv::Image2D >* vis_v = NULL;    
     if ( _is_mc ) {
@@ -116,7 +118,7 @@ namespace larcv {
       vis_v = &(ev_in_vis->image2d_array());
     }
     
-    // input flo
+    // input flo (whole image)
     larcv::EventImage2D* ev_in_flo = NULL;
     const std::vector< larcv::Image2D >* flo_v = NULL;
     if ( _is_mc ) {
@@ -128,20 +130,20 @@ namespace larcv {
       flo_v = &(ev_in_flo->image2d_array());
     }
 
-    // input BBox
+    // input BBox (defines crops. from UBSplitDetector)
     auto ev_in_bbox  = (larcv::EventImage2D*)(mgr.get_data("bbox2d", _input_bbox_producer));
     if (!ev_in_bbox) {
-      LARCV_CRITICAL() << "No Input BBox2D found with a name: " << _input_bbox_producer << std::endl;
+      LARCV_CRITICAL() << "No Input BBox2D found with a name: " << _input_bbox_producer << ". make using UBSplitDetector." << std::endl;
       throw larbys();
     }
 
-    // cropped input ADC
+    // cropped input ADC (from UBSplitDetector)
     auto ev_in_cropped  = (larcv::EventImage2D*)(mgr.get_data("image2d", _input_cropped_producer));
     if (!ev_in_cropped) {
-      LARCV_CRITICAL() << "No Input Cropped ADC Image2D found with a name: " << _input_cropped_producer << std::endl;
+      LARCV_CRITICAL() << "No Input Cropped ADC Image2D found with a name: " << _input_cropped_producer << ". make using UBSplitDetector" << std::endl;
       throw larbys();
     }
-    const std::vector< larcv::Image2D >& cropped_v = ev_in_cropped->image2d_array();
+    std::vector< larcv::Image2D >& cropped_v = ev_in_cropped->as_mod_vector(); // we use mutable, because we might pass objects to output container
     
 
     // ----------------------------------------------------------------
@@ -171,7 +173,7 @@ namespace larcv {
       ev_flo_adc->clear();
     }
     
-    // Output Meta containers
+    // Output Meta containers: meta of each crop
     larcv::EventMeta* ev_meta = NULL;
     if ( _save_output ) {
       ev_meta = (larcv::EventMeta*)foutIO->get_data("meta",_output_meta_producer);
@@ -204,15 +206,17 @@ namespace larcv {
     
     for (int icrop=0; icrop<ncrops; icrop++) {
 
-      // this is a copy of the ADC image crop. not great. could swap if needed ...
-      std::vector<larcv::Image2D> crop_v;
+      // this is a pointer to crop_v
+      std::vector<const larcv::Image2D*> crop_v; // I guess everyone hates bare pointers now. could use reference wrapper?
+      std::vector<larcv::Image2D*> mod_crop_v;
       for (int i=0; i<3; i++) {
-	crop_v.push_back( cropped_v.at( 3*icrop+i ) );
+	crop_v.push_back( &(cropped_v.at( 3*icrop+i )) );
+	mod_crop_v.push_back( &(cropped_v.at( 3*icrop+i )) );	
       }
 
       // if limiting overlap, check that we are not overlapping too many pixels
       if ( _limit_overlap ) {
-	const larcv::ImageMeta& cropped_src_meta = crop_v[src_plane].meta();
+	const larcv::ImageMeta& cropped_src_meta = crop_v[src_plane]->meta();
 	float npix_overlap = 0.0;
 	int crop_r_start = src_meta.row( cropped_src_meta.min_y() );
 	int crop_c_start = src_meta.col( cropped_src_meta.min_x() );
@@ -266,7 +270,7 @@ namespace larcv {
 
 	// if we are limiting overlaps, we need to mark overlap image
 	if ( _limit_overlap ) {
-	  const larcv::ImageMeta& cropped_src_meta = crop_v[src_plane].meta();
+	  const larcv::ImageMeta& cropped_src_meta = crop_v[src_plane]->meta();
 	  int crop_r_start = src_meta.row( cropped_src_meta.min_y() );
 	  int crop_c_start = src_meta.col( cropped_src_meta.min_x() );
 	  for (int r=crop_r_start; r<crop_r_start+(int)cropped_src_meta.rows(); r++) {
@@ -278,15 +282,16 @@ namespace larcv {
 	
 	//LARCV_DEBUG() << "Store LArFlow Crop" << std::endl;
 	if ( _save_output ) {
-	  ev_out_adc->emplace( std::move(crop_v) );
+	  for ( auto& pimg : mod_crop_v )
+	    ev_out_adc->emplace( std::move(*pimg) );
 	  if ( _is_mc ) {
 	    ev_vis_adc->emplace( std::move(cropped_visi) );
 	    ev_flo_adc->emplace( std::move(cropped_flow) );
 	  }
 	}
 	else {
-	  for ( auto& img : crop_v )
-	    ev_out_adc->emplace( std::move(img) );
+	  for ( auto& pimg : mod_crop_v )
+	    ev_out_adc->emplace( std::move(*pimg) );
 
 	  if ( _is_mc ) {
 	    for ( auto& img : cropped_visi )
@@ -324,7 +329,7 @@ namespace larcv {
   
   void UBCropLArFlow::make_cropped_flow_images( const int src_plane,
 						const larcv::ImageMeta& srcmeta,
-						std::vector<larcv::Image2D>& croppedadc_v,
+						const std::vector<const larcv::Image2D*>& croppedadc_v,
 						const std::vector<larcv::Image2D>& srcflow,
 						const std::vector<larcv::Image2D>& srcvisi,
 						const std::vector<float>& thresholds,
@@ -340,7 +345,7 @@ namespace larcv {
     // inputs
     // ------
     // src_plane: source image plane ID
-    // srcmeta: meta of source image
+    // srcmeta: meta of wholeview source image
     // croppedadc_v: vector of cropped adc image, provides meta for target images
     // srcflow: uncropped flow images
     // srcvisi: uncropped visibility images
@@ -369,12 +374,12 @@ namespace larcv {
 				    {4,5} };
 
     // get source adc and target image/meta
-    const larcv::Image2D& adcimg = croppedadc_v[src_plane];
+    const larcv::Image2D& adcimg = *(croppedadc_v[src_plane]);
     const larcv::ImageMeta& meta = adcimg.meta();
 
     const larcv::ImageMeta* target_meta[2];
-    target_meta[0] = &croppedadc_v[ targetplanes[src_plane][0] ].meta();
-    target_meta[1] = &croppedadc_v[ targetplanes[src_plane][1] ].meta();
+    target_meta[0] = &(croppedadc_v[ targetplanes[src_plane][0] ]->meta());
+    target_meta[1] = &(croppedadc_v[ targetplanes[src_plane][1] ]->meta());
 
     // make output flow/vis images
     // make two per source image
@@ -384,33 +389,77 @@ namespace larcv {
     // the meta for these are the same as the source image
     for (int i=0; i<2; i++) {
       larcv::Image2D flo( meta );
-      flo.paint(0.0);
+      flo.paint(UBCropLArFlow::_NO_FLOW_VALUE_ );
       cropped_flow.emplace_back( std::move(flo) );
       
       larcv::Image2D visi( meta );
       visi.paint(0.0);
       cropped_visi.emplace_back( std::move(visi) );
     }
-
-    // if we perform maxpooling, we will need holders for maxpooled images
-    std::vector<larcv::Image2D> maxpooled_source;
-    std::vector<larcv::Image2D> maxpooled_target;
-    
-    // we scan across the adc image + flow images.
-    // we check and correct the un-cropped flow value and visibility
-    //  in order to fill the cropped flow and visi images
-
+        
     // loop over the two targets
     for (int i=0; i<2; i++) {
 
       int trgt_idx = targetindex[src_plane][i];
       int trgt_pl  = targetplanes[src_plane][i];
-      const larcv::Image2D& target_adc = croppedadc_v[trgt_pl];
+      const larcv::Image2D& target_adc = *croppedadc_v[trgt_pl];
       const larcv::Image2D& source_vis = srcvisi[trgt_idx];
       const larcv::Image2D& source_flo = srcflow[trgt_idx];
       larcv::Image2D& out_vis = cropped_visi[i];
       larcv::Image2D& out_flo = cropped_flow[i];
 
+      // first, copy over values from the whole-view flo and vis images
+      out_vis.copy_region( source_vis );
+      out_flo.copy_region( source_flo );
+
+      std::vector<float> colindex(out_flo.meta().cols());
+      for ( int i=0; i<(int)colindex.size(); i++ )
+	colindex[i] = i;
+      
+      // now, we must update, because
+      //  (1) some pixels might not be visible
+      //  (2) we need to remove the offset
+
+      // determine flow offset
+      // the difference in pixels of the x-origin of the source and target image
+      float _flowoffset = (float)srcmeta.col(out_flo.meta().min_x()) - (float)srcmeta.col(target_meta[i]->min_x());
+      float target_xmin = target_meta[i]->min_x();
+      float target_xmax = target_meta[i]->max_x();
+      //std::cout << "Flow offset=" << _flowoffset << std::endl;
+
+      // mask below threshold
+      const std::vector<float>& adcimg_asvec = adcimg.as_vector();
+      // std::transform( adcimg_asvec.begin(), adcimg_asvec.end(),
+      // 		      out_vis.as_vector().begin(),
+      // 		      out_vis.as_mod_vector().begin(),
+      // 		      MaskBelowThreshold( thresholds[src_plane], 0.0 ) );
+      std::transform( adcimg_asvec.begin(), adcimg_asvec.end(),
+      		      out_flo.as_vector().begin(),
+      		      out_flo.as_mod_vector().begin(),
+      		      MaskBelowThreshold( thresholds[src_plane], UBCropLArFlow::_NO_FLOW_VALUE_ ) );
+      
+      // rows are contiguous
+      std::vector<float> col_axis  = out_vis.meta().xaxis();      
+      for ( size_t c=0; c<out_vis.meta().cols(); c++) {
+      	std::transform( out_flo.row_start(c), out_flo.row_end(c),
+			out_vis.row_start(c), 
+      			out_vis.row_start(c),
+      			ModVisibility(target_xmin,target_xmax, col_axis[c] ) );
+      }
+
+      // we can update the flow in one shot
+      std::vector<float>& flo_img_v = out_flo.as_mod_vector();
+      std::transform( flo_img_v.begin(), flo_img_v.end(),
+      		      flo_img_v.begin(),
+      		      FlowOffset(_flowoffset) );
+
+      // finally mask the flow value where visibility is now-zero
+      std::transform( out_vis.as_vector().begin(), out_vis.as_vector().end(),
+      		      out_flo.as_vector().begin(),
+      		      out_flo.as_mod_vector().begin(),
+      		      MaskBelowThreshold( 1.0, UBCropLArFlow::_NO_FLOW_VALUE_ ) );
+      
+      /* we try to avoid this loop
       // loop over rows and cols
       for (int r=0; r<(int)meta.rows(); r++) {
     
@@ -438,7 +487,7 @@ namespace larcv {
 
 	    // inside. need to adjust the flow.
 	    int target_col = target_meta[i]->col( target_wire );
-	    float target_adc = croppedadc_v[ targetplanes[src_plane][i] ].pixel( r, target_col );
+	    float target_adc = croppedadc_v[ targetplanes[src_plane][i] ]->pixel( r, target_col );
 									
 	    float target_flow = target_col - c;
 	    out_flo.set_pixel( r, c, target_flow );
@@ -451,45 +500,55 @@ namespace larcv {
 
 	}//end of loop over cols
       }//end of loop over rows
+      */
       
-      // max pool, if desired
-      if ( do_maxpool && (row_ds_factor>1 || col_ds_factor>1) ) {
-	// allocate empty images
-	larcv::Image2D ds_src_adc;
-	larcv::Image2D ds_target_adc;
-	larcv::Image2D ds_flow;
-	larcv::Image2D ds_visi;
-	maxPool( row_ds_factor, col_ds_factor,
-		 adcimg, target_adc, out_flo, out_vis,
-		 thresholds,
-		 ds_src_adc, ds_target_adc, ds_flow, ds_visi );
-	// store source maxpool
-	maxpooled_source.emplace_back(std::move(ds_src_adc));
-	// store target_maxpool
-	maxpooled_target.emplace_back(std::move(ds_target_adc));
+      // // max pool, if desired
+      // if ( do_maxpool && (row_ds_factor>1 || col_ds_factor>1) ) {
+      // 	// allocate empty images
+      // 	larcv::Image2D ds_src_adc;
+      // 	larcv::Image2D ds_target_adc;
+      // 	larcv::Image2D ds_flow;
+      // 	larcv::Image2D ds_visi;
+      // 	maxPool( row_ds_factor, col_ds_factor,
+      // 		 adcimg, target_adc, out_flo, out_vis,
+      // 		 thresholds,
+      // 		 ds_src_adc, ds_target_adc, ds_flow, ds_visi );
+      // 	// store source maxpool
+      // 	maxpooled_source.emplace_back(std::move(ds_src_adc));
+      // 	// store target_maxpool
+      // 	maxpooled_target.emplace_back(std::move(ds_target_adc));
 	
-	// swap the flow and visi
-	std::swap( out_flo, ds_flow );
-	std::swap( out_vis, ds_visi );
-      }
+      // 	// swap the flow and visi
+      // 	std::swap( out_flo, ds_flow );
+      // 	std::swap( out_vis, ds_visi );
+      // }
       
     }// end of loop over target images
       
 
-    if (do_maxpool) {
-      // swap out downsampled adc images
-      std::swap( croppedadc_v[src_plane], maxpooled_source[0] );
-      for (int i=0; i<2; i++) {
-	int trgt_pl  = targetplanes[src_plane][i];
-	std::swap( croppedadc_v[trgt_pl], maxpooled_target[i] );
-      }
-    }
+    // if (do_maxpool) {
+    //   // swap out downsampled adc images
+    //   std::swap( croppedadc_v[src_plane], maxpooled_source[0] );
+    //   for (int i=0; i<2; i++) {
+    // 	int trgt_pl  = targetplanes[src_plane][i];
+    // 	std::swap( croppedadc_v[trgt_pl], maxpooled_target[i] );
+    //   }
+    // }
     
     return;
   }
 
+  void UBCropLArFlow::downsample_crops( const std::vector<larcv::Image2D*>& cropped_adc_v,
+					const std::vector<larcv::Image2D>& cropped_flow_v,
+					const std::vector<larcv::Image2D>& cropped_visi_v,
+					std::vector<larcv::Image2D>& downsampled_adc_v,
+					std::vector<larcv::Image2D>& downsampled_flow_v,
+					std::vector<larcv::Image2D>& downsampled_visi_v ) {
+    return; // to do
+  }
+
   std::vector<float> UBCropLArFlow::check_cropped_images( const int src_plane,
-							  const std::vector<larcv::Image2D>& cropped_adc_v,
+							  const std::vector<const larcv::Image2D*>& cropped_adc_v,
 							  const std::vector<float>& thresholds,
 							  const std::vector<larcv::Image2D>& cropped_flow,
 							  const std::vector<larcv::Image2D>& cropped_visi,
@@ -533,26 +592,57 @@ namespace larcv {
     int nwrong_nolabel[2] = {0};      // vis=1 and above thresh, but no flow value
     int ncorrect[2] = {0};            // total correct pixels
     
-    const larcv::Image2D& src_adc = cropped_adc_v[src_plane];
+    const larcv::Image2D& src_adc = *(cropped_adc_v[src_plane]);
     const larcv::ImageMeta& meta = src_adc.meta();
 
-    TH2D* hcheck_flow[2] = {NULL}; // visualize images
+
+    TH2D* hflow[2] = {NULL};
+    TH2D* hvisi[2] = {NULL};
+    TH2D* hcheck_flow[2] = {NULL};     // visualize images
     TH2D* hcheck_vismatch[2] = {NULL}; // visualize images
     if ( visualize_flow ) {
-      // we follow the flow and mark values in the target coordinate system
+      
+      const larcv::ImageMeta* tar_meta[2];
+      for (int i=0; i<2; i++) {
+	tar_meta[i] = &(cropped_adc_v[ targetplanes[src_plane][i] ]->meta());
+      }
+	
+      // plot the flow (in source coordinates)
+      std::stringstream ss_y2uflow;
+      ss_y2uflow << "hflow_" << src_plane << "to" << targetplanes[src_plane][0] << "_" << _check_img_counter;      
+      hflow[0] = new TH2D( ss_y2uflow.str().c_str(), "", meta.cols(), meta.min_x(), meta.max_x(), meta.rows(), meta.min_y(), meta.max_y() );
+
+      std::stringstream ss_y2vflow;
+      ss_y2vflow << "hflow_" << src_plane << "to" << targetplanes[src_plane][1] << "_" << _check_img_counter;      
+      hflow[1] = new TH2D( ss_y2vflow.str().c_str(), "", meta.cols(), meta.min_x(), meta.max_x(), meta.rows(), meta.min_y(), meta.max_y() );
+
+      // plot the visibility (in source coordinates)
+      std::stringstream ss_y2uvis;;
+      ss_y2uvis << "hvisi_" << src_plane << "to" << targetplanes[src_plane][0] << "_" << _check_img_counter;      
+      hvisi[0] = new TH2D( ss_y2uvis.str().c_str(), "", meta.cols(), meta.min_x(), meta.max_x(), meta.rows(), meta.min_y(), meta.max_y() );
+      
+      std::stringstream ss_y2vvis;
+      ss_y2vvis << "hvisi_" << src_plane << "to" << targetplanes[src_plane][1] << "_" << _check_img_counter;      
+      hvisi[1] = new TH2D( ss_y2vvis.str().c_str(), "", meta.cols(), meta.min_x(), meta.max_x(), meta.rows(), meta.min_y(), meta.max_y() );
+      
+      // we follow the flow and mark values (in the target coordinate system)
       std::stringstream ss1;
       ss1 << "hcheck_" << src_plane << "to" << targetplanes[src_plane][0] << "_" << _check_img_counter;
       std::stringstream ss1_t;
-      ss1_t << "Vis Check: plane" << src_plane << " to " << targetplanes[src_plane][0] << " #" << _check_img_counter;
-      hcheck_flow[0] = new TH2D( ss1.str().c_str(), ss1_t.str().c_str(), meta.cols(), meta.min_x(), meta.max_x(), meta.rows(), meta.min_y(), meta.max_y() );
+      ss1_t << "Flow/Vis Check: plane" << src_plane << " to " << targetplanes[src_plane][0] << " #" << _check_img_counter;
+      hcheck_flow[0] = new TH2D( ss1.str().c_str(), ss1_t.str().c_str(),
+				 tar_meta[0]->cols(), tar_meta[0]->min_x(), tar_meta[0]->max_x(),
+				 tar_meta[0]->rows(), tar_meta[0]->min_y(), tar_meta[0]->max_y() );
 
       std::stringstream ss2;
       ss2 << "hcheck_" << src_plane << "to" << targetplanes[src_plane][1] << "_" << _check_img_counter;
       std::stringstream ss2_t;
-      ss2_t << "Vis Check: plane" << src_plane << " to " << targetplanes[src_plane][1] << " #" << _check_img_counter;      
-      hcheck_flow[1] = new TH2D( ss2.str().c_str(), ss2_t.str().c_str(), meta.cols(), meta.min_x(), meta.max_x(), meta.rows(), meta.min_y(), meta.max_y() );
+      ss2_t << "Flow/Vis Check: plane" << src_plane << " to " << targetplanes[src_plane][1] << " #" << _check_img_counter;
+      hcheck_flow[1] = new TH2D( ss2.str().c_str(), ss2_t.str().c_str(),
+				 tar_meta[1]->cols(), tar_meta[1]->min_x(), tar_meta[1]->max_x(),
+				 tar_meta[1]->rows(), tar_meta[1]->min_y(), tar_meta[1]->max_y() );
 
-      // we mark pixels in the source view that indicates it match found in target image
+      // we indicate if match found in target image (in source coordinates)
       std::stringstream ss3;
       ss3 << "hvismatch_" << src_plane << "to" << targetplanes[src_plane][0] << "_" << _check_img_counter;
       hcheck_vismatch[0] = new TH2D( ss3.str().c_str(), ss3.str().c_str(), meta.cols(), meta.min_x(), meta.max_x(), meta.rows(), meta.min_y(), meta.max_y() );
@@ -572,23 +662,29 @@ namespace larcv {
 	  // loop over target plane
 
 	  float visi = cropped_visi[i].pixel(r,c);
+	  float flow = cropped_flow[i].pixel(r,c);
+	  if ( visualize_flow ) {
+	    hvisi[i]->SetBinContent(c+1,r+1,visi);
+	    hflow[i]->SetBinContent(c+1,r+1,flow);
+	  } 
+	  
 	  if ( visi>0.5 )
 	    nvis[i]++;
 	  
 	  if ( src_adc.pixel(r,c)<thresholds[src_plane] ) {
 	    if ( visi>0.5 ) {
 	      nwrong_visbelow[i]++;
-	      if ( visualize_flow )
+	      if ( visualize_flow ) {
 		hcheck_vismatch[i]->SetBinContent(c+1,r+1,-5.0);
+	      }
 	    }
-	    continue;
+	    continue; // continue, as source below threshold now, not interesting
 	  }
-	
-	  nabove[i]++;
-      
-	  int flow = cropped_flow[i].pixel(r,c);
 
-	  
+	  // above threshold pixels
+	  nabove[i]++;
+	  	  
+	  int targetc = c+flow;
 	  if ( flow<=UBCropLArFlow::_NO_FLOW_VALUE_ ) {
 	    if ( visi<0.5) {
 	      ncorrect[i]++;
@@ -600,16 +696,13 @@ namespace larcv {
 	      if ( visualize_flow )	      
 		hcheck_vismatch[i]->SetBinContent( c+1, r+1, -1.0 );
 	    }
-	    continue;
-	  }
-	  
-	  int targetc = c+flow;
+	    continue; // no valid value of flow, continue
+	  }	  
 	
-	  //std::cout << "(" << r << "," << c << ") flow=" << flow << " targetc=" << targetc << std::endl;
 	  float targetadc = 0;
 	  bool  goodtarget = false;
 	  try {
-	    targetadc = cropped_adc_v[ trgt_img ].pixel( r, targetc );
+	    targetadc = cropped_adc_v[ trgt_img ]->pixel( r, targetc );
 	    goodtarget = true;
 	  }
 	  catch (std::exception& e) {
@@ -620,29 +713,30 @@ namespace larcv {
 		      << e.what()
 		      << std::endl;
 	  }
+
 	  
 	  if (!goodtarget) {
 	    nwrong_flowob[i]++;
-	    if ( visualize_flow )	    
+	    if ( visualize_flow ) 
 	      hcheck_vismatch[i]->SetBinContent( c+1, r+1, -4.0 );
-	    continue;
+	    continue; // flow out of bounds
 	  }
-	  
-	  if ( visualize_flow ) {
-	    hcheck_flow[i]->SetBinContent( targetc+1, r+1, flow );
-	  }
-	  
+	  	  
 	  if ( visi>0.5 ) {
 	    // should be vis
 	    if ( targetadc>=thresholds[ trgt_img ] ) {
 	      ncorrect[i]++;
-	      if ( visualize_flow )	      
+	      if ( visualize_flow ) {
 		hcheck_vismatch[i]->SetBinContent( c+1, r+1, 3.0 );
+		hcheck_flow[i]->SetBinContent( targetc+1, r+1, 3.0 );
+	      }
 	    }
 	    else {
 	      nwrong_flow2nothing[i]++;
-	      if ( visualize_flow )
-		hcheck_vismatch[i]->SetBinContent( c+1, r+1, -3.0 );	    
+	      if ( visualize_flow ) {
+		hcheck_vismatch[i]->SetBinContent( c+1, r+1, -3.0 );
+		hcheck_flow[i]->SetBinContent( targetc+1, r+1, -3.0 );		
+	      }
 	    }
 	    
 	  }
@@ -650,13 +744,17 @@ namespace larcv {
 	    // should be invisible
 	    if ( targetadc<thresholds[ trgt_img ] ) {
 	      ncorrect[i]++;
-	      if ( visualize_flow )
+	      if ( visualize_flow ) {
 		hcheck_vismatch[i]->SetBinContent( c+1, r+1, 2.0 );
+		hcheck_flow[i]->SetBinContent( targetc+1, r+1, 2.0 );
+	      }
 	    }
 	    else {
 	      nwrong_badvisi[i]++;
-	      if ( visualize_flow )
-		hcheck_vismatch[i]->SetBinContent( c+1, r+1, -2.0 );	    	    
+	      if ( visualize_flow ) {
+		hcheck_vismatch[i]->SetBinContent( c+1, r+1, -2.0 );
+		hcheck_flow[i]->SetBinContent( targetc+1, r+1, -2.0 );
+	      }
 	    }
 	  }
 	}
@@ -668,77 +766,99 @@ namespace larcv {
       for (int i=0; i<2; i++) {
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
 	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "      	
-	  << "[source plane " << src_plane << "-> target plane " << targetplanes[src_plane][i]  << "]"
-	  << "  nabove=" << nabove[i] << ", "
-	  << "  nvis=" << nvis[i] << ", "
-	  << "  ncorrect/nabove=" << float(ncorrect[i])/float(nabove[i])
-	  << std::endl;
+	  << "[source plane " << src_plane << "-> target plane " << targetplanes[src_plane][i]  << "]" << std::endl;
+	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)	  
+	  << "  nabovethresh=" << nabove[i] << std::endl;
+	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
+	  << "  nvis=" << nvis[i] << std::endl;
+	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
+	  << "  ncorrect=" << ncorrect[i] << std::endl;
+	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
+	  << "  ncorrect/nabove=" << float(ncorrect[i])/float(nabove[i]) << std::endl;
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
 	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "
-	  << "  badvisi: "      << float(nwrong_badvisi[i])/float(nabove[i]) << std::endl;
+	  << "  badvisi/nabove: "      << float(nwrong_badvisi[i])/float(nabove[i]) << std::endl;
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
 	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "
-	  << "  visbelow: "      << float(nwrong_visbelow[i])/float(nvis[i]) << std::endl;
+	  << "  visbelow/nabove: "      << float(nwrong_visbelow[i])/float(nvis[i]) << std::endl;
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
 	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "      
-	  << "  flow2nothing: " << float(nwrong_flow2nothing[i])/float(nabove[i]) << std::endl;
+	  << "  flow2nothing/nabove: " << float(nwrong_flow2nothing[i])/float(nabove[i]) << std::endl;
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)      
 	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "      
-	  << "  flow2OB: " << float(nwrong_flowob[i])/float(nabove[i]) << std::endl;
+	  << "  flow2OB/nabove: " << float(nwrong_flowob[i])/float(nabove[i]) << std::endl;
 	(*log).send(::larcv::msg::kDEBUG,    __FUNCTION__, __LINE__, __FILE__)
 	  //std::cout << __FILE__ << "." << __LINE__ << "::" << __FUNCTION__ << ": "      
-	  << "  nolabel: " << float(nwrong_nolabel[i])/float(nabove[i]) << std::endl;
+	  << "  nolabel/nabove: " << float(nwrong_nolabel[i])/float(nabove[i]) << std::endl;
       }
     }
       
     // dump canvas and clean up
     if ( visualize_flow ) {
-
-      TCanvas c("c", "", 1600, 1600 );
-      c.Divide(2,2);
-      c.cd(1);
-
-      std::stringstream ss1;
-      ss1 << "hsource_p" << src_plane << "_" << _check_img_counter;
-      TH2D hsrc = as_th2d( src_adc, ss1.str() );
-      hsrc.SetMaximum(50.0);
-      hsrc.SetMinimum( 0.0);
-      hsrc.Draw("COLZ");
-      
-
-      c.cd(2);
-      std::stringstream ss2;
-      ss2 << "htarget_" << src_plane << "to" << targetplanes[src_plane][0] << "_" << _check_img_counter;
-      TH2D htar1 = as_th2d( cropped_adc_v[targetplanes[src_plane][0]], ss2.str() );
-      htar1.SetMaximum(50.0);
-      htar1.SetMinimum( 0.0);
-      htar1.Draw("COLZ");
-      
-
-      c.cd(3);
-      // check vis
-      hcheck_vismatch[0]->SetMaximum(3.0);
-      hcheck_vismatch[0]->SetMinimum(-5.0);
-      hcheck_vismatch[0]->Draw("COLZ");
-
-      c.cd(4);
-      // check flow
-      hcheck_flow[0]->SetMaximum(500.0);
-      hcheck_flow[0]->SetMinimum(-500.0);
-      hcheck_flow[0]->Draw("COLZ");
-
-      // save
-      std::stringstream css1;
-      css1 << "ccheck_" << src_plane << "to" << targetplanes[src_plane][0] << "_" << _check_img_counter << ".png";
-      c.SaveAs( css1.str().c_str() );
-      
-      // The other flow
-      
-      // std::string ss3;
-      // ss3 << "htarget_" << src_plane << "to" << targetplanes[src_plane][1] << "_" << _check_img_counter;
-      // TH2D htar2 = as_th2d( cropped_adc_v[targetplanes[src_plane][1]], ss3.str() );
-
       for (int i=0; i<2; i++) {
+	TCanvas c("c", "", 1600, 1800 );
+	c.Divide(2,3);
+	c.cd(1);
+
+	// SOURCE ADC
+	std::stringstream ss1;
+	ss1 << "hsource" << i << "_p" << src_plane << "_" << _check_img_counter;
+	TH2D hsrc = as_th2d( src_adc, ss1.str() );
+	hsrc.SetTitle("Source ADC");
+	hsrc.SetMaximum(50.0);
+	hsrc.SetMinimum( 0.0);
+	setRainbowPalette();
+	hsrc.Draw("COLZ");
+      
+
+	// TARGET ADC
+	c.cd(2);
+	std::stringstream ss2;
+	ss2 << "htarget" << i << "_" << src_plane << "to" << targetplanes[src_plane][i] << "_" << _check_img_counter;
+	TH2D htar1 = as_th2d( *cropped_adc_v[targetplanes[src_plane][i]], ss2.str() );
+	htar1.SetTitle("TargetADC");
+	htar1.SetMaximum(50.0);
+	htar1.SetMinimum( 0.0);
+	setRainbowPalette();      
+	htar1.Draw("COLZ");
+
+	// FLOW (drawn in source coordinates)
+	c.cd(3);
+	hflow[i]->SetTitle("Flow");
+	hflow[i]->SetMaximum( 900);
+	hflow[i]->SetMinimum(-900);
+	setBWRPalette();
+	hflow[i]->Draw("COLZ");
+
+	// VISIBILITY (drawn in source coordinates)
+	c.cd(6);
+	hvisi[i]->SetTitle("Y2U Visibility");
+	hvisi[i]->Draw("COLZ");
+      
+	c.cd(5);
+	// check vis (drawn in source coordinates)
+	hcheck_vismatch[i]->SetTitle("Check Visibility Match");      
+	hcheck_vismatch[i]->SetMaximum( 5.0);
+	hcheck_vismatch[i]->SetMinimum(-5.0);
+	setBWRPalette();      
+	hcheck_vismatch[i]->Draw("COLZ");
+
+	c.cd(4);
+	// check flow (drawn in target coordinates)
+	hcheck_flow[i]->SetMaximum(5.0);
+	hcheck_flow[i]->SetMinimum(-5.0);
+	setBWRPalette();
+	hcheck_flow[i]->Draw("COLZ");
+
+	// save
+	std::stringstream css1;
+	css1 << "ccheck_" << src_plane << "to" << targetplanes[src_plane][i] << "_" << _check_img_counter << ".png";
+	c.SaveAs( css1.str().c_str() );
+      }
+      
+      for (int i=0; i<2; i++) {
+	delete hflow[i];
+	delete hvisi[i];
 	delete hcheck_flow[i];
 	delete hcheck_vismatch[i];
       }
@@ -972,5 +1092,32 @@ namespace larcv {
     
   }
   
+  void UBCropLArFlow::setBWRPalette() {
+    
+    // A colour palette that goes blue->white->red, useful for
+    // correlation matrices
+    const int NRGBs = 3;
+    const int n_color_contours = 999;
+    
+    if ( UBCropLArFlow::_colors==NULL ) {
+      _colors=new int[n_color_contours];
+      
+      Double_t stops[NRGBs] = { 0.00, 0.50, 1.00};
+      Double_t red[NRGBs]   = { 0.00, 1.00, 1.00};
+      Double_t green[NRGBs] = { 0.00, 1.00, 0.00};
+      Double_t blue[NRGBs]  = { 1.00, 1.00, 0.00};
+      int colmin=TColor::CreateGradientColorTable(NRGBs, stops, red, green, blue, n_color_contours);
+      for(uint i=0; i<n_color_contours; ++i) UBCropLArFlow::_colors[i]=colmin+i;
+    }
+    
+    gStyle->SetNumberContours(n_color_contours);
+    gStyle->SetPalette(n_color_contours, UBCropLArFlow::_colors);
+  }
+  
+  void UBCropLArFlow::setRainbowPalette() {
+    gStyle->SetPalette( kRainBow );
+  }
+
+
 }
 #endif

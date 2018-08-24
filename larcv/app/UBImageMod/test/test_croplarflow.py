@@ -4,7 +4,8 @@ import sys
 sys.argv.append("-b")
 
 
-superafile = "/media/hdd2/taritree/larflow/xfer/larcv_5477923_0.root"
+#superafile = "/media/hdd2/taritree/larflow/xfer/larcv_5477923_0.root"
+superafile = "../../../../../testdata/larcv_5482426_95.root"
 
 io = larcv.IOManager(larcv.IOManager.kBOTH)
 io.add_in_file( superafile )
@@ -24,10 +25,10 @@ BBoxPixelWidth: 832
 CoveredZWidth: 310
 FillCroppedYImageCompletely: true
 DebugImage: false
-MaxImages: 20
-RandomizeCrops: true
-MaxRandomAttempts: 50
-MinFracPixelsInCrop: 0.0001
+MaxImages: 1
+RandomizeCrops: false
+MaxRandomAttempts: 1000
+MinFracPixelsInCrop: 0.0
 """
 
 fcfg = open("ubsplit.cfg",'w')
@@ -40,23 +41,26 @@ split_pset = larcv.CreatePSetFromFile( "ubsplit.cfg", "UBSplitDetector" )
 
 lfcrop_cfg="""Verbosity:0
 InputBBoxProducer: \"detsplit\"
-InputADCProducer: \"wire\"
 InputCroppedADCProducer: \"detsplit\"
+InputADCProducer: \"wire\"
 InputVisiProducer: \"pixvisi\"
 InputFlowProducer: \"pixflow\"
-OutputCroppedADCProducer: \"adc\"
+OutputCroppedADCProducer:  \"adc\"
 OutputCroppedVisiProducer: \"visi\"
 OutputCroppedFlowProducer: \"flow\"
 OutputCroppedMetaProducer: \"flowmeta\"
 OutputFilename: \"baka_lf.root\"
-CheckFlow: true
+SaveOutput: false
+CheckFlow:  true
 MakeCheckImage: true
-DoMaxPool: true
+DoMaxPool: false
 RowDownsampleFactor: 2
 ColDownsampleFactor: 2
-MaxImages: 5
-LimitOverlap: true
+MaxImages: -1
+LimitOverlap: false
+RequireMinGoodPixels: false
 MaxOverlapFraction: 0.2
+IsMC: true
 """
 
 lfcfg = open("ublarflowcrop.cfg",'w')
