@@ -2,7 +2,8 @@ import ROOT as rt
 from larcv import larcv
 
 
-superafile = "larcv_062218.root"
+#superafile = "/media/hdd2/taritree/larflow/xfer/larcv_5477923_0.root"
+superafile = "../../../../..//testdata/larcv_5482426_95.root"
 
 io = larcv.IOManager(larcv.IOManager.kBOTH)
 io.add_in_file( superafile )
@@ -22,8 +23,8 @@ BBoxPixelWidth: 832
 CoveredZWidth: 310
 FillCroppedYImageCompletely: true
 DebugImage: false
-MaxImages: 5
-RandomizeCrops: true
+MaxImages: -1
+RandomizeCrops: false
 MaxRandomAttempts: 50
 MinFracPixelsInCrop: -0.0001
 """
@@ -46,7 +47,7 @@ cfgcrop="""
 
 nentries = io.get_n_entries()
 print "Num Entries: ",nentries
-nentries = 1
+nentries = 3
 
 for n in range(nentries):
     io.read_entry(n)
@@ -54,22 +55,36 @@ for n in range(nentries):
 
     detsplit = io.get_data( "image2d", "detsplit" )
 
-    h_v = {}
-    for i in range(0,detsplit.image2d_array().size()):
-        h_v[i] = larcv.as_th2d( detsplit.image2d_array()[i], "test%d"%(i) )
-    print h_v
+    if False:
+        # visualize
+        h_v = {}
+        for i in range(0,detsplit.image2d_array().size()):
+            h_v[i] = larcv.as_th2d( detsplit.image2d_array()[i], "test%d"%(i) )
+            h_v[i].GetZaxis().SetRangeUser(-10,100)
+        #print h_v
 
-    c = rt.TCanvas("c","c",1500,400)
-    c.Divide(3,1)
-    for i in range(len(h_v)/3):
-        for j in range(3):
-            c.cd(j+1)
-            h_v[3*i+j].Draw("COLZ")
+        c = rt.TCanvas("c","c",1500,400)
+        c.Divide(3,1)
+        for i in range(len(h_v)/3):
+            for j in range(3):
+                c.cd(j+1)
+                h_v[3*i+j].Draw("COLZ")
 
-        c.Update()
-        raw_input()
+            c.Update()
+            raw_input()
+    print "save entry"
     io.save_entry()
 
+algo.printElapsedTime()
 io.finalize()
+
+io2 = larcv.IOManager(larcv.IOManager.kREAD)
+io2.add_in_file( "baka.root" )
+io2.initialize()
+
+for i in xrange(io2.get_n_entries()):
+    io2.read_entry(i)
+    evdetsplit = io2.get_data("image2d","detsplit")
+    print "entry ",i,": desplit images = ",evdetsplit.as_vector().size()
 
 print "FIN"

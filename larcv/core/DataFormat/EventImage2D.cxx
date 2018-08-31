@@ -38,6 +38,24 @@ namespace larcv {
     _image_v = std::move(image_v);
     for(size_t i=0; i<_image_v.size(); ++i) _image_v[i].index((ImageIndex_t)i);
   }
+
+  void EventImage2D::paintall( float value ) {
+    // calls paint on all stored images in container
+    // intention is to be able to zero out all images
+    for ( auto &img : _image_v ) {
+      img.paint(value);
+    }
+  }
+
+  Image2D& EventImage2D::modimgat(ImageIndex_t id) {
+    if( id >= _image_v.size() ) throw larbys("Invalid request (ImageIndex_t out-o-range)!");
+    return _image_v[id];
+  }
+
+  void EventImage2D::reserve(size_t s) {
+    _image_v.reserve(s);
+  }
+  
 }
 
 #endif

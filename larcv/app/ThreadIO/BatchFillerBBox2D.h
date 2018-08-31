@@ -26,6 +26,8 @@ namespace larcv {
   class BatchFillerBBox2D : public BatchFillerTemplate<float> {
 
   public:
+
+    typedef enum { kMinMax=0, kCenter } Format_t;
     
     /// Default constructor
     BatchFillerBBox2D(const std::string name="BatchFillerBBox2D");
@@ -70,7 +72,17 @@ namespace larcv {
     // data members of the parent BatchFillerTemplate class
     // we have to provide unrolled values.
     // so values ordered like: center-x,center-y,width,height,center-x,...    
-    std::vector< float > _entry_data; 
+    std::vector< float > _entry_data;
+
+    // format
+    // if MinMax: (x1,y1,x2,y2,class)
+    // if Center: (x,y,w,h)
+    // default is MinMax
+    Format_t _format;
+
+    // include class
+    // if true (default true), we include class object as last value in array
+    bool _include_class;
 
   };
 

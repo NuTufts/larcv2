@@ -19,6 +19,7 @@
 #include "larcv/core/Processor/ProcessFactory.h"
 #include "larcv/core/DataFormat/Image2D.h"
 #include "larcv/core/DataFormat/Particle.h"
+#include "larcv/core/DataFormat/Voxel3D.h"
 #include "larcv/core/DataFormat/Voxel2D.h"
 
 namespace larcv {
@@ -33,6 +34,7 @@ namespace larcv {
 struct particle_node{
   int trackID;
   int parentID;
+  int ancestorID;
   bool primary;
   const Particle * reference;
   particle_node * parent;
@@ -59,14 +61,17 @@ class ParentParticleSeg : public ProcessBase {
   larcv::VoxelSet cluster_merger(const larcv::ClusterPixel2D & clusters,
                                  particle_node * primary_node);
 
+  larcv::VoxelSet cluster_merger(const larcv::ClusterVoxel3D & clusters,
+                                 particle_node * primary_node);
  private:
+
   void get_all_daughter_ids(std::vector<int> & ids, const particle_node * node);
 
 
+  std::string _cluster3d_producer;
   std::string _cluster2d_producer;
   std::string _output_producer;
   std::string _particle_producer;
-  std::vector<int> _block_merge_pdgs;
 
 };
 

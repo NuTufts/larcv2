@@ -11,6 +11,7 @@ HEADERS_DEST = larcv/app/$(PACKAGE_NAME)
 
 # include options for this package
 INCFLAGS  = -I.                       #Include itself
+INCFLAGS  += -std=c++11
 INCFLAGS += $(shell larcv-config --includes)
 
 INCFLAGS += $(shell larlite-config --includes)

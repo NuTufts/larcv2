@@ -138,14 +138,94 @@ namespace larcv {
 
   void Image2D::copy_region( size_t dest_row_start, size_t dest_col_start, size_t src_row_start, size_t nrows, size_t src_col_start, size_t ncols, const larcv::Image2D& src ) {
 
-    for (size_t r=0; r<nrows; r++) {
-      for (size_t c=0; c<ncols; c++) {
-	set_pixel( dest_row_start+r, dest_col_start+c, src.pixel(src_row_start+r,src_col_start+c) );
-      }
+    // for (size_t r=0; r<nrows; r++) {
+    //   for (size_t c=0; c<ncols; c++) {
+    // 	set_pixel( dest_row_start+r, dest_col_start+c, src.pixel(src_row_start+r,src_col_start+c) );
+    //   }
+    // }
+    
+    for (size_t c=0; c<ncols; c++) {
+      size_t dest_index = meta().index( dest_row_start, dest_col_start+c );
+      size_t src_index = src.meta().index( src_row_start, src_col_start+c );
+      memcpy( &_img[dest_index], &src.as_vector()[src_index], nrows*sizeof(float) ); // much, much faster
     }
     
   }
 
+  void Image2D::copy_region(  const larcv::Image2D& src ) {
+    // we assume same pixel scale
+    
+    // we in bounds?
+    if ( meta().min_x() > src.meta().max_x()
+	 || meta().max_x() < src.meta().min_x()
+	 || meta().min_y() > src.meta().max_y()
+	 || meta().max_y() < src.meta().min_y() )
+      return; // no overlap, so no copy
+    
+    //size_t dest_row_start, size_t dest_col_start, size_t src_row_start, size_t nrows, size_t src_col_start, size_t ncols;
+    size_t src_col_start = 0;
+    size_t des_col_start = 0;
+    if ( meta().min_x() > src.meta().min_x() )
+      src_col_start = src.meta().col( meta().min_x() );
+    else
+      des_col_start = meta().col( src.meta().min_x() );
+    
+    size_t src_row_start = 0;
+    size_t des_row_start = 0;
+    if ( meta().min_y() > src.meta().min_y() )
+      src_row_start = src.meta().row( meta().min_y() );
+    else
+      des_row_start = meta().row( src.meta().min_y() );
+    
+    size_t src_col_end = src.meta().cols()-1;
+    size_t des_col_end = meta().cols()-1;
+    if ( meta().max_x() < src.meta().max_x() )
+      src_col_end = src.meta().col( meta().max_x() );
+    else
+      des_col_end = meta().col( src.meta().max_x() );
+
+    size_t src_row_end = src.meta().rows()-1;
+    size_t des_row_end = meta().rows()-1;
+    if ( meta().max_y() < src.meta().max_y() )
+      src_row_end = src.meta().row( meta().max_y() );
+    else
+      des_row_end = meta().row( src.meta().max_y() );
+
+    size_t src_nrows = src_row_end - src_row_start + 1;
+    size_t src_ncols = src_col_end - src_col_start + 1;
+    size_t des_nrows = des_row_end - des_row_start + 1;
+    size_t des_ncols = des_col_end - des_col_start + 1;
+
+    size_t nrows = ( src_nrows > des_nrows ) ? des_nrows : src_nrows;
+    size_t ncols = ( src_ncols > des_ncols ) ? des_ncols : src_ncols;
+
+    // std::cout << "copy_region. "
+    // 	      << " src start (r,c)=(" << src_row_start << "," << src_col_start << ") "
+    // 	      << " det start (r,c)=(" << des_row_start << "," << des_col_start << ") "
+    // 	      << " : "
+    // 	      << " src end (r,c)=(" << src_row_end << "," << src_col_end << ") "
+    // 	      << " det end (r,c)=(" << des_row_end << "," << des_col_end << ") "
+    // 	      << " ncols=" << ncols
+    // 	      << " nrows=" << nrows
+    // 	      << std::endl;
+    
+    // for (size_t r=0; r<nrows; r++) {
+    //   for (size_t c=0; c<ncols; c++) {
+    // 	set_pixel( des_row_start+r, des_col_start+c, src.pixel(src_row_start+r,src_col_start+c) );
+    //   }
+    // }
+
+    // use memcpy: this is nearly 100 times faster than above loop!
+    // rows are the contiguous dimension
+    for (size_t c=0; c<ncols; c++) {
+      size_t des_index = meta().index( des_row_start, des_col_start+c );
+      size_t src_index = src.meta().index( src_row_start, src_col_start+c );
+      //set_pixel( des_row_start+r, des_col_start+c, src.pixel(src_row_start+r,src_col_start+c) );
+      memcpy( &_img[des_index], &src.as_vector()[src_index], nrows*sizeof(float) ); // faster?
+    }
+    
+  }
+  
   void Image2D::reverse_copy(size_t row, size_t col, const std::vector<float>& src, size_t nskip, size_t num_pixel)
   {
     size_t idx = 0;
@@ -236,51 +316,24 @@ namespace larcv {
       throw larbys("Cropping region contains region outside the image!");
 
     // translate cropped region to positions in our image, taking into account rounding
-    size_t min_col = _meta.col(crop_meta.min_x());
-    float min_x    = _meta.pos_x(min_col);
-
-    size_t max_col = _meta.col(crop_meta.max_x());
-    float max_x    = _meta.pos_x(max_col);
-
-    size_t min_row = _meta.row(crop_meta.min_y());
-    float min_y    = _meta.pos_y(min_row);
-
-    size_t max_row = _meta.row(crop_meta.max_y());
-    float max_y    = _meta.pos_y(max_row);
-
+    size_t min_col = _meta.col(crop_meta.min_x() + _meta.pixel_width()  / 2. );
+    size_t max_col = _meta.col(crop_meta.max_x() - _meta.pixel_width()  / 2. );
+    size_t min_row = _meta.row(crop_meta.min_y() + _meta.pixel_height() / 2. );
+    size_t max_row = _meta.row(crop_meta.max_y() - _meta.pixel_height() / 2. );
     
-    // std::cout<<"Cropping! Requested:" << crop_meta.dump() << std::endl;
-
-    // std::cout << "Original:" <<_meta.dump()<<std::endl;
-
-    // std::cout<<min_col<< " => " << max_col << " ... " << min_row << " => " << max_row << std::endl;
-    // std::cout<<_meta.width() << " / " << _meta.cols() << " = " << _meta.pixel_width() << std::endl;
-
-    // ImageMeta res_meta( (max_col - min_col + 1) * _meta.pixel_width(),
-    //                     (max_row - min_row + 1) * _meta.pixel_height(),
-    //                     (max_row - min_row + 1),
-    //                     (max_col - min_col + 1),
-    //                     _meta.min_x() + min_col * _meta.pixel_width(),
-    //                     _meta.min_y() + min_row * _meta.pixel_height(),
-    //                     _meta.id(), _meta.unit());
-    ImageMeta res_meta( min_x, min_y, max_x, max_y, max_row-min_row, max_col-min_col, _meta.id(), _meta.unit() );
-    //std::cout << "cropped output res_meta: " << res_meta.dump() << std::endl;
+    ImageMeta res_meta( crop_meta.min_x(), crop_meta.min_y(),
+			crop_meta.max_x(), crop_meta.max_y(),
+			max_row-min_row+1, max_col-min_col+1,
+			_meta.id(), _meta.unit() );
 		       
-    // std::vector<float> img;
-    // img.resize(res_meta.cols() * res_meta.rows());
+    std::vector<float> img;
+    img.resize(res_meta.cols() * res_meta.rows());
 
-    // size_t column_size = max_row - min_row + 1;
-    // for (size_t col = min_col; col <= max_col; ++col)
-    //   memcpy(&(img[(col - min_col)*column_size]), &(_img[_meta.index(min_row, col)]), column_size * sizeof(float));
+    size_t column_size = max_row - min_row + 1;
+    for (size_t col = min_col; col <= max_col; ++col)
+      memcpy(&(img[(col - min_col)*column_size]), &(_img[_meta.index(min_row, col)]), column_size * sizeof(float));
 
-    //std::cout<<"Cropped:" << std::endl << res_meta.dump()<<std::endl;
-
-    Image2D imgout( res_meta );
-    for (size_t c=min_col; c<max_col; c++)
-      for (size_t r=min_row; r<max_row; r++)
-	imgout.set_pixel( r-min_row, c-min_col, pixel(r,c) );
-    
-    return imgout;
+    return Image2D(std::move(res_meta), std::move(img));    
   }
 
   Image2D Image2D::crop(const BBox2D& bbox, const DistanceUnit_t unit) const
@@ -297,6 +350,8 @@ namespace larcv {
     size_t max_col = _meta.col(bbox.max_x() - _meta.pixel_width()  / 2. );
     size_t min_row = _meta.row(bbox.min_y() + _meta.pixel_height() / 2. );
     size_t max_row = _meta.row(bbox.max_y() - _meta.pixel_height() / 2. );
+    size_t ncols   = max_col-min_col+1;
+    size_t nrows   = max_row-min_row+1;
     /*
     std::cout<<"Cropping! Requested:" << std::endl
        << crop_meta.dump() << std::endl
@@ -306,23 +361,17 @@ namespace larcv {
     std::cout<<min_col<< " => " << max_col << " ... " << min_row << " => " << max_row << std::endl;
     std::cout<<_meta.width() << " / " << _meta.cols() << " = " << _meta.pixel_width() << std::endl;
     */
-    ImageMeta res_meta( (max_col - min_col + 1) * _meta.pixel_width(),
-                        (max_row - min_row + 1) * _meta.pixel_height(),
-                        (max_row - min_row + 1),
-                        (max_col - min_col + 1),
-                        _meta.min_x() + min_col * _meta.pixel_width(),
-                        _meta.min_y() + min_row * _meta.pixel_height(),
-                        _meta.id(), _meta.unit());
+    ImageMeta res_meta( bbox.min_x(), bbox.min_y(),
+			bbox.max_x(), bbox.max_y(),
+			nrows, ncols, 
+			_meta.id(), _meta.unit() );
 
     std::vector<float> img;
     img.resize(res_meta.cols() * res_meta.rows());
 
     size_t column_size = max_row - min_row + 1;
     for (size_t col = min_col; col <= max_col; ++col)
-
       memcpy(&(img[(col - min_col)*column_size]), &(_img[_meta.index(min_row, col)]), column_size * sizeof(float));
-
-    //std::cout<<"Cropped:" << std::endl << res_meta.dump()<<std::endl;
 
     return Image2D(std::move(res_meta), std::move(img));
   }
@@ -487,6 +536,35 @@ namespace larcv {
     }
 
     eltwise(rhs.as_vector(), false);
+  }
+
+  void Image2D::modifyMeta( const ImageMeta& newmeta ) {
+    // we do a copy and swap -- meta small enough where copy is ok
+    // also, the nrows*ncols must match the underlying data. we can change the coordinates though
+    if ( meta().rows()!=newmeta.rows() || meta().cols()!=newmeta.cols() ) {
+      char nope[500];
+      sprintf( nope, "Can only modify meta when number of rows and colums are the same. we can only change the coordinate system." );
+      throw larbys(nope);
+    }
+    ImageMeta m(newmeta);
+    std::swap(m,_meta);
+  }
+
+  std::vector<float> Image2D::timeslice( int row ) const {
+    // returns columns at given row
+    std::vector<float> pixvalues(meta().cols());
+    const int nrows = meta().rows();
+    for ( int i=0; i<(int)meta().cols(); i++ ) {
+      pixvalues[i] = _img[ i*nrows + row ]; // strided access, compiler do your thing!
+    }
+    return pixvalues;
+  }
+
+  void Image2D::rowcopy( size_t row, const std::vector<float>& src ) {
+    const int nrows = meta().rows();
+    int ncols = (meta().cols() < src.size()) ? meta().cols() : src.size();
+    for ( int i=0; i<ncols; i++ )
+      _img[ i*nrows + row ] = src[i];
   }
 
 }

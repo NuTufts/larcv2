@@ -115,15 +115,18 @@ namespace larcv {
     /// Construct a union bounding box
     ImageMeta inclusive(const ImageMeta& meta) const;
 
-    // Find row that corresponds to a specified index
+    /// Find row that corresponds to a specified index
     size_t index_to_row(size_t index) const;
-    // Find col that corresponds to a specified index
+    /// Find col that corresponds to a specified index
     size_t index_to_col(size_t index) const;
-
-
-
+    /// Find row and col that corresponds to a specified index
+    void index_to_rowcol(size_t index, size_t& row, size_t& col) const;
     /// Dump info in text
     std::string dump() const;
+
+    /// Axes
+    std::vector<float> xaxis() const { std::vector<float> ax(cols()); for (size_t i=0; i<cols(); i++) ax[i] = min_x() + i*pixel_width(); return ax; };
+    std::vector<float> yaxis() const { std::vector<float> ay(rows()); for (size_t i=0; i<rows(); i++) ay[i] = min_y() + i*pixel_height(); return ay; };
 
   protected:
 
@@ -137,4 +140,3 @@ namespace larcv {
 
 #endif
 /** @} */ // end of doxygen group
-
