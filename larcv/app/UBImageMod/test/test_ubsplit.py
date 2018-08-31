@@ -14,7 +14,7 @@ io.initialize()
 # UBSplitDetector
 
 scfg="""Verbosity: 0
-InputProducer: \"wire\"
+InputProducer: \"Labels\"
 OutputBBox2DProducer: \"detsplit\"
 CropInModule: true
 OutputCroppedProducer: \"detsplit\"
@@ -26,7 +26,7 @@ DebugImage: false
 MaxImages: -1
 RandomizeCrops: false
 MaxRandomAttempts: 50
-MinFracPixelsInCrop: 0.0001
+MinFracPixelsInCrop: -0.0001
 """
 
 fcfg = open("ubsplit.cfg",'w')

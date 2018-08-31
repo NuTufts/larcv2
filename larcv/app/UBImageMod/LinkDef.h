@@ -12,8 +12,10 @@
 
 
 #pragma link C++ class larcv::UBSplitDetector+;
+#pragma link C++ class larcv::UBSplitDetector_Infill+;
 #pragma link C++ class larcv::UBCropLArFlow+;
 #pragma link C++ class larcv::UBLArFlowStitcher+;
+#pragma link C++ class larcv::InfilloutputImages+;
 
 //ADD_NEW_CLASS ... do not change this line
 #endif

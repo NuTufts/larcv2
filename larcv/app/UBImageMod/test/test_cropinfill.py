@@ -4,12 +4,11 @@ import sys
 sys.argv.append("-b")
 
 
-#superafile = "/media/hdd2/taritree/larflow/xfer/larcv_5477923_0.root"
-superafile = "../../../../../testdata/larcv_5482426_95.root"
+superafile = "larcv_062218.root"
 
 io = larcv.IOManager(larcv.IOManager.kBOTH)
 io.add_in_file( superafile )
-io.set_out_file( "baka.root" )
+io.set_out_file( "baka_cropinfill.root" )
 io.initialize()
 
 # -------------------------------------
@@ -21,14 +20,14 @@ OutputBBox2DProducer: \"detsplit\"
 CropInModule: true
 OutputCroppedProducer: \"detsplit\"
 BBoxPixelHeight: 512
-BBoxPixelWidth: 512
+BBoxPixelWidth: 832
 CoveredZWidth: 310
 FillCroppedYImageCompletely: true
-DebugImage: false
-MaxImages: 1
-RandomizeCrops: false
-MaxRandomAttempts: 1000
-MinFracPixelsInCrop: 0.0
+DebugImage: true
+MaxImages: 50
+RandomizeCrops: true
+MaxRandomAttempts: 50
+MinFracPixelsInCrop: 0
 """
 
 fcfg = open("ubsplit.cfg",'w')
@@ -41,27 +40,23 @@ split_pset = larcv.CreatePSetFromFile( "ubsplit.cfg", "UBSplitDetector" )
 
 lfcrop_cfg="""Verbosity:0
 InputBBoxProducer: \"detsplit\"
-InputCroppedADCProducer: \"detsplit\"
-InputADCProducer: \"wire\"
-InputVisiProducer: \"pixvisi\"
-InputFlowProducer: \"pixflow\"
-OutputCroppedADCProducer:  \"adc\"
-OutputCroppedVisiProducer: \"visi\"
-OutputCroppedFlowProducer: \"flow\"
-OutputCroppedMetaProducer: \"flowmeta\"
-OutputFilename: \"baka_lf.root\"
-SaveOutput: false
-CheckFlow:  true
-MakeCheckImage: true
+InputWireProducer: \"wire\"
+InputLabelsProducer: \"Labels\"
+InputADCProducer: \"ADC\"
+OutputCroppedWireProducer: \"wire\"
+OutputCroppedLabelsProducer: \"Labels\"
+OutputCroppedADCProducer: \"ADC\"
+OutputCroppedWeightsProducer: \"Weights\"
+OutputCroppedMetaProducer: \"meta\"
+OutputFilename: \"baka_cropinfill.root\"
+CheckFlow: false
+MakeCheckImage: false
 DoMaxPool: false
 RowDownsampleFactor: 2
 ColDownsampleFactor: 2
-MaxImages: -1
+MaxImages: 10
 LimitOverlap: false
-RequireMinGoodPixels: false
 MaxOverlapFraction: 0.2
-IsMC: true
-UseVectorizedCode: true
 """
 
 lfcfg = open("ublarflowcrop.cfg",'w')
