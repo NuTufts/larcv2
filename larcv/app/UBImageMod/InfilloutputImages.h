@@ -43,7 +43,7 @@ namespace larcv {
 
     bool process(IOManager& mgr);
 
-    void finalize();
+    void finalize() {};
     // ----------------------------------------------------------------------
     // we save data ourselves
 

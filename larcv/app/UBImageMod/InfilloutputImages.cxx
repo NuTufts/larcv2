@@ -21,8 +21,6 @@
 namespace larcv {
 
   static InfilloutputImagesProcessFactory __global_InfilloutputImagesProcessFactory__;
-  //int   InfilloutputImages::_check_img_counter = 0;
-  //const float InfilloutputImages::_NO_FLOW_VALUE_ = -4000;
 
   InfilloutputImages::InfilloutputImages(const std::string name)
     : ProcessBase(name)
