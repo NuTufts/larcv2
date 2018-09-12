@@ -19,6 +19,7 @@ endif
 
 APP_SUBDIRS := Filter ImageAna ImageMod SBNDImageMod ThreadIO #Merger
 APP_SUBDIRS += UBImageMod
+APP_SUBDIRS += UBWireTool
 
 .phony: all clean
 
