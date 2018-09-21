@@ -33,6 +33,7 @@
 #pragma link C++ class larcv::BatchFillerPIDLabel+;
 #pragma link C++ class larcv::BatchFillerMultiLabel+;
 #pragma link C++ class larcv::BatchFillerImage2D+;
+#pragma link C++ class larcv::BatchFillerImageMeta+;
 #pragma link C++ class larcv::BatchFillerTensor3D+;
 #pragma link C++ class larcv::BatchFillerBBox2D+;
 //#pragma link C++ class larcv::ThreadFillerFactory+;
