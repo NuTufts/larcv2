@@ -7,6 +7,7 @@ PACKAGE_NAME = UBWireTool
 SOURCES = $(wildcard *.cxx)
 FMWK_HEADERS = LinkDef.h
 HEADERS = $(filter-out $(FMWK_HEADERS), $(wildcard *.h))
+HEADERS_DEST = larcv/app/$(PACKAGE_NAME)
 #HEADERS += IOManager.inl
 
 # include options for this package
