@@ -21,11 +21,11 @@ OutputBBox2DProducer: \"detsplit\"
 CropInModule: true
 OutputCroppedProducer: \"detsplit\"
 BBoxPixelHeight: 512
-BBoxPixelWidth: 512
+BBoxPixelWidth: 832
 CoveredZWidth: 310
 FillCroppedYImageCompletely: true
 DebugImage: false
-MaxImages: 1
+MaxImages: -1
 RandomizeCrops: false
 MaxRandomAttempts: 1000
 MinFracPixelsInCrop: 0.0
@@ -67,7 +67,7 @@ UseVectorizedCode: true
 lfcfg = open("ublarflowcrop.cfg",'w')
 print >>lfcfg,lfcrop_cfg
 lfcfg.close()
-lfpset = larcv.CreatePSetFromFile( "ublarflowcrop.cfg", "UBCropInfill" )
+lfpset = larcv.CreatePSetFromFile( "ublarflowcrop.cfg", "UBCropLArFlow" )
 
 # -------------------------------------
 # ALGOS
@@ -76,7 +76,7 @@ split_algo = larcv.UBSplitDetector()
 split_algo.configure(split_pset)
 split_algo.initialize()
 
-lfcrop_algo = larcv.UBCropInfill()
+lfcrop_algo = larcv.UBCropLArFlow()
 lfcrop_algo.configure(lfpset)
 lfcrop_algo.initialize()
 
@@ -90,7 +90,9 @@ for n in range(0,nentries):
     io.read_entry(n)
     split_algo.process( io )
     lfcrop_algo.process( io );
-
+    print "finished event"
+    break
+    
 lfcrop_algo.finalize()
 io.finalize()
 
