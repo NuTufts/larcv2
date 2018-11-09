@@ -35,6 +35,10 @@
 #pragma link C++ function larcv::as_ndarray (const std::vector< unsigned long long >& vec)+;
 #pragma link C++ function larcv::as_ndarray (const std::vector< float              >& vec)+;
 #pragma link C++ function larcv::as_ndarray (const std::vector< double             >& vec)+;
+#pragma link C++ function larcv::as_ndarray (const larcv::ChStatus&)+;
+#pragma link C++ function larcv::as_ndarray (const larcv::EventChStatus&)+;
+#pragma link C++ function larcv::as_chstatus ( PyObject*, const int );
+#pragma link C++ function larcv::as_eventchstatus ( PyObject* );
 #endif
 #pragma link C++ class larcv::load_pyutil+;
 #pragma link C++ class larcv::PyImageMaker+;

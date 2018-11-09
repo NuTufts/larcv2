@@ -14,6 +14,7 @@ typedef _object PyObject;
 //#endif
 
 #include "larcv/core/DataFormat/Image2D.h"
+#include "larcv/core/DataFormat/EventChStatus.h"
 #include "larcv/core/DataFormat/Voxel3D.h"
 #include "larcv/core/DataFormat/Voxel3DMeta.h"
 
@@ -74,7 +75,12 @@ VoxelSet as_tensor3d(PyObject *, float min_threshold=0);
 
 // allows one to avoid some loops in python
 void fill_img_col(Image2D &img, std::vector<short> &adcs, const int col,const float pedestal = 0.0);
-                  //const int timedownsampling, const float pedestal = 0.0);
+
+// ChStatus conversion utilities
+PyObject* as_ndarray( const ChStatus& chstatus, const int projectionid ); 
+PyObject* as_ndarray( const EventChStatus& evstatus );
+ChStatus      as_chstatus( PyObject* );
+EventChStatus as_eventchstatus( PyObject* ); 
 
 template <class T> int ctype_to_numpy();
 template<> int ctype_to_numpy<short>();

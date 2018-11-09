@@ -520,6 +520,114 @@ PyObject* numpy_array(std::vector<size_t> dims)
 
 template PyObject* numpy_array<float>(std::vector<size_t>dims);
 
-}
+  // =================================================================
+  // CHSTATUS UTILITIES
+  // -------------------
+  PyObject* as_ndarray( const ChStatus& status ) {
+    // NOTE: CREATES WRAPPER    
+    SetPyUtil();
+
+    int nd = 1;
+    int dim_data[1];
+    dim_data[0] = status.as_vector().size();
+    auto const &stat_v = status.as_vector();
+        
+    return PyArray_FromDimsAndData( nd, dim_data, NPY_USHORT, (char*)(&stat_v[0]) );
+  }
+
+
+  PyObject* as_ndarray( const EventChStatus& evstatus ) {
+    // NOTE: CREATES NEW ARRAY
+    
+    SetPyUtil();
+    
+    int nd = 2;
+    npy_intp dim_data[2];
+    dim_data[0] = evstatus.chstatus_map().size(); //  num planes
+    int maxlen = 0;
+    for (size_t p=0; p<evstatus.chstatus_map().size(); p++) {
+      int planelen = evstatus.status( (larcv::ProjectionID_t)p ).as_vector().size();
+      if ( planelen > maxlen )
+	maxlen = planelen;
+    }
+    dim_data[1] = maxlen;
+
+    PyArrayObject* arr = (PyArrayObject*)PyArray_ZEROS( nd, dim_data, NPY_USHORT, 0 );
+    
+    short* data = (short*)PyArray_DATA(arr);
+    
+    for (size_t p=0; p<evstatus.chstatus_map().size(); p++) {
+      const std::vector<short>& chstatus = evstatus.status( (larcv::ProjectionID_t)p ).as_vector();
+      for (size_t wire=0; wire<chstatus.size(); wire++) {
+	*(data + p*dim_data[1] + wire) = chstatus[wire];
+      }
+    }
+    
+    return (PyObject*)arr;
+  }
+
+  ChStatus      as_chstatus( PyObject* pyarray, const int projectionid ) {
+    
+    SetPyUtil();
+    const int dtype = NPY_USHORT;
+    PyArray_Descr *descr = PyArray_DescrFromType(dtype);
+    npy_intp dims[1];
+    float *carray;
+    if ( PyArray_AsCArray(&pyarray, (void *)&carray, dims, 1, descr) < 0 ) {
+      logger::get("PyUtil").send(larcv::msg::kCRITICAL, __FUNCTION__, __LINE__,
+				 "ERROR: cannot convert numpy array to ChStatus Object");
+      throw larbys();
+    }
+
+    std::vector<short> status_v( dims[0], 0 );
+    for (int i = 0; i < dims[0]; ++i)
+      status_v[i] = carray[i];
+    PyArray_Free(pyarray,(void*)carray);
+    
+    ChStatus out( (ProjectionID_t)projectionid, std::move(status_v) );
+    
+    return out;
+  }
+  
+  EventChStatus as_eventchstatus( PyObject* pyarray ) {
+    
+    SetPyUtil();
+    const int dtype      = NPY_USHORT;
+    PyArray_Descr *descr = PyArray_DescrFromType(dtype);
+    int nd               = PyArray_NDIM( (PyArrayObject*)pyarray );
+    npy_intp* dims       = PyArray_DIMS( (PyArrayObject*)pyarray );
+
+    if ( nd!=2 ) {
+      logger::get("PyUtil").send(larcv::msg::kCRITICAL, __FUNCTION__, __LINE__,
+				 "ERROR: unexpected dimension size for EventChStatus numpy array (should be two).");
+      throw larbys();
+    }
+    
+    short **carray;
+    if ( PyArray_AsCArray(&pyarray, (void **)&carray, dims, nd, descr) < 0 ) {
+      logger::get("PyUtil").send(larcv::msg::kCRITICAL, __FUNCTION__, __LINE__,
+				 "ERROR: cannot convert numpy array to ChStatus Object");
+      throw larbys();
+    }
+
+    EventChStatus evchstatus;
+    for (int i = 0; i < dims[0]; ++i) {    
+      std::vector<short> status_v( dims[1], 0 );
+      for (int j=0; j < dims[1]; ++j )
+	status_v[ j ] = carray[i][j];
+      ChStatus chstatus( (ProjectionID_t)i, std::move(status_v) );
+      evchstatus.emplace( std::move(chstatus) );
+    }
+    
+    PyArray_Free(pyarray,(void*)carray);
+    
+    return evchstatus;    
+  }
+  
+  
+  
+}//end of larcv namespace
+
+
 
 #endif
