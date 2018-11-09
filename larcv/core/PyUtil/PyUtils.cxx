@@ -598,8 +598,9 @@ template PyObject* numpy_array<float>(std::vector<size_t>dims);
     npy_intp* dims       = PyArray_DIMS( (PyArrayObject*)pyarray );
 
     if ( nd!=2 ) {
-      logger::get("PyUtil").send(larcv::msg::kCRITICAL, __FUNCTION__, __LINE__,
-				 "ERROR: unexpected dimension size for EventChStatus numpy array (should be two).");
+      char error[512];
+      sprintf(error,"ERROR: unexpected dimension size for EventChStatus numpy array (should be two but got %d).",nd);
+      logger::get("PyUtil").send(larcv::msg::kCRITICAL, __FUNCTION__, __LINE__,error);
       throw larbys();
     }
     
