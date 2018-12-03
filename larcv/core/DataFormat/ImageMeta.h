@@ -124,6 +124,11 @@ namespace larcv {
     /// Dump info in text
     std::string dump() const;
 
+    /// check if contains pixel
+    inline bool contains( float tick, float wire ) const {
+      return ( min_y()<=tick && tick < max_y() && min_x()<=wire && wire<max_x() );
+    }
+
     /// Axes
     std::vector<float> xaxis() const { std::vector<float> ax(cols()); for (size_t i=0; i<cols(); i++) ax[i] = min_x() + i*pixel_width(); return ax; };
     std::vector<float> yaxis() const { std::vector<float> ay(rows()); for (size_t i=0; i<rows(); i++) ay[i] = min_y() + i*pixel_height(); return ay; };
