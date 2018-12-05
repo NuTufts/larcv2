@@ -24,6 +24,7 @@
 #pragma link C++ class larcv::EventBase+;
 #pragma link C++ class larcv::Vertex+;
 #pragma link C++ class larcv::Point2D+;
+#pragma link C++ class std::vector<larcv::Point2D>+;
 #pragma link C++ class larcv::Point3D+;
 
 #pragma link C++ class larcv::Image2D+;
@@ -79,6 +80,12 @@
 #pragma link C++ class larcv::Meta+;
 #pragma link C++ class larcv::EventMeta+;
 
+#pragma link C++ class larcv::ClusterMask+;
+#pragma link C++ class std::vector<larcv::ClusterMask>+;
+#pragma link C++ class std::vector<std::vector<larcv::ClusterMask>>+;
+#pragma link C++ class larcv::EventClusterMask+;
+
+
 #pragma link C++ class larcv::FlatTensorContents+;
 #pragma link C++ function larcv::as_image2d(const SparseTensor2D&)+;
 #pragma link C++ function larcv::as_image2d(const VoxelSet&, const ImageMeta&)+;
@@ -89,17 +96,3 @@
 //ADD_NEW_CLASS ... do not change this line
 
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-

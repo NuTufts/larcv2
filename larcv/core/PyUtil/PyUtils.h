@@ -15,6 +15,8 @@ typedef _object PyObject;
 
 #include "larcv/core/DataFormat/Image2D.h"
 #include "larcv/core/DataFormat/EventChStatus.h"
+#include "larcv/core/DataFormat/ClusterMask.h"
+
 #include "larcv/core/DataFormat/Voxel3D.h"
 #include "larcv/core/DataFormat/Voxel3DMeta.h"
 
@@ -39,6 +41,10 @@ PyObject* as_ndarray(const Image2D &img);
 PyObject* as_caffe_ndarray(const Image2D &img);
 /// larcv::VoxelSet to numpy array converter
 PyObject* as_ndarray(const SparseTensor3D &data, bool clear_mem=false);
+/// larcv::ClusterMask bbox to numpy array converter
+PyObject* as_ndarray_bbox(const ClusterMask &mask);
+/// larcv::ClusterMask points_v to numpy array converter
+PyObject* as_ndarray_mask(const ClusterMask &mask);
 /// copy array
 template <class T>
 void _copy_array(PyObject *arrayin, const std::vector<T> &cvec);
@@ -77,10 +83,10 @@ VoxelSet as_tensor3d(PyObject *, float min_threshold=0);
 void fill_img_col(Image2D &img, std::vector<short> &adcs, const int col,const float pedestal = 0.0);
 
 // ChStatus conversion utilities
-PyObject* as_ndarray( const ChStatus& chstatus, const int projectionid ); 
+PyObject* as_ndarray( const ChStatus& chstatus, const int projectionid );
 PyObject* as_ndarray( const EventChStatus& evstatus );
 ChStatus      as_chstatus( PyObject* );
-EventChStatus as_eventchstatus( PyObject* ); 
+EventChStatus as_eventchstatus( PyObject* );
 
 template <class T> int ctype_to_numpy();
 template<> int ctype_to_numpy<short>();
