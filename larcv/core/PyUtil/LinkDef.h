@@ -37,6 +37,9 @@
 #pragma link C++ function larcv::as_ndarray (const std::vector< double             >& vec)+;
 #pragma link C++ function larcv::as_ndarray (const larcv::ChStatus&)+;
 #pragma link C++ function larcv::as_ndarray (const larcv::EventChStatus&)+;
+#pragma link C++ function larcv::as_ndarray_bbox (const larcv::ClusterMask&)+;
+#pragma link C++ function larcv::as_ndarray_mask (const larcv::ClusterMask&)+;
+
 #pragma link C++ function larcv::as_chstatus ( PyObject*, const int );
 #pragma link C++ function larcv::as_eventchstatus ( PyObject* );
 #endif
@@ -45,23 +48,3 @@
 //ADD_NEW_CLASS ... do not change this line
 
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
