@@ -16,7 +16,7 @@ namespace larcv {
   ClusterMask::ClusterMask(BBox2D box_in, ImageMeta meta_in, std::vector<Point2D> pts_in, InteractionID_t type_in)
   :  box(box_in), meta(meta_in), points_v(pts_in), type(type_in)
   {
-    _box = {(float) box.min_x(), (float) box.min_y(), (float) box.max_x(), (float) box.max_y(), (float) type};
+    _box = {(float) meta_in.col(box.min_x()), (float) meta_in.row(box.min_y()), (float) meta_in.col(box.max_x()), (float) meta_in.row(box.max_y()), (float) type};
     _mask = std::vector<float>( (box.height()/meta_in.pixel_height()+1) * (box.width()/meta_in.pixel_width()+1), 0.0);
     for (Point2D pt : points_v){
       _mask[(int)(pt.x - meta_in.col(box.min_x())) * box.height()/meta_in.pixel_height()+1 + pt.y-meta_in.row(box.min_y())] = 1.0;
