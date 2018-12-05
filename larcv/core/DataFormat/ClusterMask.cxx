@@ -9,7 +9,7 @@ namespace larcv {
   : box(0,0,0,0,kINVALID_PROJECTIONID) , meta(ImageMeta()), points_v(0,Point2D(0,0))
   {
     type = 0;
-    _box = {(float) box.min_x(), (float) box.min_y(), (float) box.max_x(), (float) box.max_y(), (float) type};
+    _box = {(float) meta.row(box.min_x()), (float) meta.col(box.min_y()), (float) meta.row(box.max_x()), (float) meta.col(box.max_y()), (float) type};
   }
 
 
