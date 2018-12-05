@@ -129,6 +129,9 @@ namespace larcv {
       return ( min_y()<=tick && tick < max_y() && min_x()<=wire && wire<max_x() );
     }
 
+    inline bool contains( Point2D pt ) const {
+      return ( min_y()<=pt.y && pt.y < max_y() && min_x()<=pt.x && pt.x<max_x() );
+    }
     /// Axes
     std::vector<float> xaxis() const { std::vector<float> ax(cols()); for (size_t i=0; i<cols(); i++) ax[i] = min_x() + i*pixel_width(); return ax; };
     std::vector<float> yaxis() const { std::vector<float> ay(rows()); for (size_t i=0; i<rows(); i++) ay[i] = min_y() + i*pixel_height(); return ay; };
