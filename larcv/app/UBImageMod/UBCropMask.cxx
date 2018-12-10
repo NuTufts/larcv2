@@ -452,52 +452,65 @@ namespace larcv {
                  std::cout << "Partial Containment:   ";
 
                  //Create new bbox for adjusted mask
-                 double min_x;
-                 double min_y;
-                 double max_x;
-                 double max_y;
-                 bool did_print =0;
+                 double min_x = 99999;
+                 double min_y = 99999;
+                 double max_x = -1;
+                 double max_y = -1;
+                 bool box_filled =0;
 
 
                  //Determine bounding box coordiantes
-                 if (masks_vv[plane][m].box.min_x() <= bbox_crop.min_x()) {
-                   min_x = bbox_crop.min_x() ;//- bbox_crop.min_x()/img_v[plane].meta().pixel_width();
-                   // min_x = 0;
-                 }
-                 else{
-                   min_x = masks_vv[plane][m].box.min_x() ;//- bbox_crop.min_x()/img_v[plane].meta().pixel_width();
-                 }
-                 if (masks_vv[plane][m].box.max_x() >= bbox_crop.max_x()) {
-                   max_x = bbox_crop.max_x() ;//- bbox_crop.min_x()/img_v[plane].meta().pixel_width();
-                 }
-                 else{
-                   max_x = masks_vv[plane][m].box.max_x() ;//- bbox_crop.min_x()/img_v[plane].meta().pixel_width();
-                 }
-                 if (masks_vv[plane][m].box.min_y() <= bbox_crop.min_y()) {
-                   min_y = bbox_crop.min_y() ;//- bbox_crop.min_y()/img_v[plane].meta().pixel_height();
-                   // min_y = 0;
-                 }
-                 else{
-                   min_y = masks_vv[plane][m].box.min_y() ;//- bbox_crop.min_y()/img_v[plane].meta().pixel_height();
-                 }
-                 if (masks_vv[plane][m].box.max_y() >= bbox_crop.max_y()) {
-                   max_y = bbox_crop.max_y() ;//- bbox_crop.min_y()/img_v[plane].meta().pixel_height();
-                 }
-                 else{
-                   max_y = masks_vv[plane][m].box.max_y() ;//- bbox_crop.min_y()/img_v[plane].meta().pixel_height();
-                 }
+                 // if (masks_vv[plane][m].box.min_x() <= bbox_crop.min_x()) {
+                 //   min_x = bbox_crop.min_x() ;//- bbox_crop.min_x()/img_v[plane].meta().pixel_width();
+                 //   // min_x = 0;
+                 // }
+                 // else{
+                 //   min_x = masks_vv[plane][m].box.min_x() ;//- bbox_crop.min_x()/img_v[plane].meta().pixel_width();
+                 // }
+                 // if (masks_vv[plane][m].box.max_x() >= bbox_crop.max_x()) {
+                 //   max_x = bbox_crop.max_x() ;//- bbox_crop.min_x()/img_v[plane].meta().pixel_width();
+                 // }
+                 // else{
+                 //   max_x = masks_vv[plane][m].box.max_x() ;//- bbox_crop.min_x()/img_v[plane].meta().pixel_width();
+                 // }
+                 // if (masks_vv[plane][m].box.min_y() <= bbox_crop.min_y()) {
+                 //   min_y = bbox_crop.min_y() ;//- bbox_crop.min_y()/img_v[plane].meta().pixel_height();
+                 //   // min_y = 0;
+                 // }
+                 // else{
+                 //   min_y = masks_vv[plane][m].box.min_y() ;//- bbox_crop.min_y()/img_v[plane].meta().pixel_height();
+                 // }
+                 // if (masks_vv[plane][m].box.max_y() >= bbox_crop.max_y()) {
+                 //   max_y = bbox_crop.max_y() ;//- bbox_crop.min_y()/img_v[plane].meta().pixel_height();
+                 // }
+                 // else{
+                 //   max_y = masks_vv[plane][m].box.max_y() ;//- bbox_crop.min_y()/img_v[plane].meta().pixel_height();
+                 // }
 
-                 // std::cout << min_x<<  " "<<max_x << " "<< min_y <<" "<< max_y<< "\n\n\n";
-                 larcv::BBox2D adjusted_box(min_x, min_y, max_x, max_y);
+                 // // std::cout << min_x<<  " "<<max_x << " "<< min_y <<" "<< max_y<< "\n\n\n";
+                 // larcv::BBox2D adjusted_box(min_x, min_y, max_x, max_y);
                  //Create New vector of points for adjusted mask
                  std::vector<Point2D> pts_v(0,Point2D());
                  for (int pt=0; pt<masks_vv[plane][m].points_v.size() ; pt++){
                    double w = meta_orig_v[plane].pos_x(masks_vv[plane][m].points_v[pt].x);
                    double t = meta_orig_v[plane].pos_y(masks_vv[plane][m].points_v[pt].y);
-                   if (adjusted_box.contains(Point2D(w,t))){
-                     if (did_print == 0){
-                       did_print=1;
+                   //Check if point in crop
+                   if (bbox_crop.contains(Point2D(w,t))){
+                     if (box_filled == 0){
+                       box_filled=1;
                        std::cout << "     FILLED AT LEAST ONCE\n";
+                     }
+                     if (w < min_x) {
+                       min_x = w;
+                     }
+                     if (w > max_x) {
+                       max_x = w;
+                     }
+                     if (t < min_y) {
+                       min_y = t;
+                     }
+                     if (t > max_y) {
+                       max_y = t;
                      }
                      double col_new = meta_crop_v[plane].col(w);
                      double row_new = meta_crop_v[plane].row(t);
@@ -506,11 +519,11 @@ namespace larcv {
                    }
 
                  }//End loop through ancestor points in mask
-                 if (did_print ==0) {
+                 if (box_filled ==0) {
                    std::cout << "\n\n\n\n\n\n\n\nCluster Bounds Crossed, but no points in Crop, Num Masks in plane:    "<< masks_v.size()<< "\n\n\n\n\n\n\n\n";
                    continue;
-
                  }
+                 larcv::BBox2D adjusted_box(min_x, min_y, max_x, max_y);
                  masks_v.push_back(ClusterMask(adjusted_box, meta_crop_v[plane], pts_v, masks_vv[plane][m].type));
                  std::cout << "Num masks in plane "<< plane << ": "<< masks_v.size()<<"\n";
                }
