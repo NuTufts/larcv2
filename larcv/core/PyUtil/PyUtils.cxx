@@ -21,8 +21,8 @@ void SetPyUtil() {
 PyObject *as_ndarray_mask(const ClusterMask &mask) {
   SetPyUtil();
   npy_intp dim_data[2];
-  dim_data[0] = mask.box.width()+1; //Add one for the 0th spot
-  dim_data[1] = mask.box.height()+1; //Add one for the 0th spot
+  dim_data[0] = (mask.box.width()/mask.meta.pixel_width())+1; //Add one for the 0th spot
+  dim_data[1] = (mask.box.height()/mask.meta.pixel_height())+1; //Add one for the 0th spot
   std::vector<float> const &vec = mask.as_vector_mask();//= copy_v;
 
   return PyArray_Transpose(((PyArrayObject*)(PyArray_SimpleNewFromData(2, dim_data, NPY_FLOAT, (char *)&(vec[0])))),NULL);

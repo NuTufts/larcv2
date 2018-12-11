@@ -27,7 +27,7 @@ CoveredZWidth: 310
 FillCroppedYImageCompletely: true
 DebugImage: false
 MaxImages: 10
-RandomizeCrops: true
+RandomizeCrops: false
 MaxRandomAttempts: 60
 MinFracPixelsInCrop: 0.0001
 """

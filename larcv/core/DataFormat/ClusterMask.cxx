@@ -9,7 +9,7 @@ namespace larcv {
   : box(0,0,0,0,kINVALID_PROJECTIONID) , meta(ImageMeta()), points_v(0,Point2D(0,0))
   {
     type = 0;
-    _box = {(float) meta.row(box.min_x()), (float) meta.col(box.min_y()), (float) (meta.row(box.max_x())-meta.row(box.min_x())), (float) (meta.col(box.max_y())- meta.col(box.min_y())), (float) type};
+    _box = {(float) meta.col(box.min_x()), (float) meta.row(box.min_y()), (float) (meta.col(box.max_x())-meta.col(box.min_x())), (float) (meta.row(box.max_y())- meta.row(box.min_y())), (float) type};
   }
 
 
@@ -19,7 +19,8 @@ namespace larcv {
     _box = {(float) meta_in.col(box.min_x()), (float) meta_in.row(box.min_y()), (float) (meta_in.col(box.max_x())-meta_in.col(box.min_x())), (float) (meta_in.row(box.max_y())-meta_in.row(box.min_y())), (float) type};
     _mask = std::vector<float>( (box.height()/meta_in.pixel_height()+1) * (box.width()/meta_in.pixel_width()+1), 0.0);
     for (Point2D pt : points_v){
-      _mask[(int)(pt.x - meta_in.col(box.min_x())) * box.height()/meta_in.pixel_height()+1 + pt.y-meta_in.row(box.min_y())] = 1.0;
+      // _mask[(int)(pt.x - meta_in.col(box.min_x())) * box.height()/meta_in.pixel_height()+1 + pt.y-meta_in.row(box.min_y())] = 1.0;
+      _mask[(int)(pt.x - meta_in.col(box.min_x())) * ((box.height()/meta_in.pixel_height())+1) + (pt.y - meta_in.row(box.min_y())) ] = 1.0;
     }
   }
 
