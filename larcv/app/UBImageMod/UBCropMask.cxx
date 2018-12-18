@@ -420,14 +420,32 @@ namespace larcv {
                if (masks_vv[plane][m].box.max_y() <= bbox_crop.min_y()) {continue;}// Mask all below of crop, don't use
                //Okay mask is in crop, let's find it:
                std::cout << "We've Got a good Crop:     ";
-
+               int final_type= -9999;
                //Add Type Counter:
-               if (masks_vv[plane][m].type == 13) {nCosmic++;}
-               else if (masks_vv[plane][m].type == 2112) {nNeutron++;}
-               else if (masks_vv[plane][m].type == 2212) {nProton++;}
-               else if (masks_vv[plane][m].type == 11) {nElectron++;}
-               else if (masks_vv[plane][m].type == -1) {nNeutrino++;}
-               else {nOther++;}
+               if (masks_vv[plane][m].type == 13) {
+                 nCosmic++;
+                 final_type = 0;
+               }
+               else if (masks_vv[plane][m].type == 2112) {
+                 nNeutron++;
+                 final_type =1;
+               }
+               else if (masks_vv[plane][m].type == 2212) {
+                 nProton++;
+                 final_type =2;
+               }
+               else if (masks_vv[plane][m].type == 11) {
+                 nElectron++;
+                 final_type =3;
+               }
+               else if (masks_vv[plane][m].type == -1) {
+                 nNeutrino++;
+                 final_type =4;
+               }
+               else {
+                 nOther++;
+                 final_type =5;
+               }
 
 
 
@@ -443,7 +461,7 @@ namespace larcv {
                    Point2D this_point(col_new, row_new);
                    pts_v.push_back(this_point);
                  }
-                 masks_v.push_back(ClusterMask(masks_vv[plane][m].box, meta_crop_v[plane], pts_v, masks_vv[plane][m].type));
+                 masks_v.push_back(ClusterMask(masks_vv[plane][m].box, meta_crop_v[plane], pts_v, final_type));
                  std::cout << "Fully Contained\n";
 
                }
@@ -495,7 +513,8 @@ namespace larcv {
                    double w = meta_orig_v[plane].pos_x(masks_vv[plane][m].points_v[pt].x);
                    double t = meta_orig_v[plane].pos_y(masks_vv[plane][m].points_v[pt].y);
                    //Check if point in crop
-                   if (bbox_crop.contains(Point2D(w,t))){
+                   //if (bbox_crop.contains(Point2D(w,t))){
+                   if (w > bbox_crop.min_x() && t > bbox_crop.min_y() && w < bbox_crop.max_x() && t < bbox_crop.max_y()){
                      if (box_filled == 0){
                        box_filled=1;
                        std::cout << "     FILLED AT LEAST ONCE\n";
@@ -524,7 +543,7 @@ namespace larcv {
                    continue;
                  }
                  larcv::BBox2D adjusted_box(min_x, min_y, max_x, max_y);
-                 masks_v.push_back(ClusterMask(adjusted_box, meta_crop_v[plane], pts_v, masks_vv[plane][m].type));
+                 masks_v.push_back(ClusterMask(adjusted_box, meta_crop_v[plane], pts_v, final_type));
                  std::cout << "Num masks in plane "<< plane << ": "<< masks_v.size()<<"\n";
                }
 
