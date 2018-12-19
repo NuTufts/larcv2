@@ -22,13 +22,13 @@ export LARCV_APPDIR=$LARCV_BASEDIR/larcv/app
 export LARCV_LIBDIR=$LARCV_BUILDDIR/lib
 export LARCV_INCDIR=$LARCV_BUILDDIR/include
 export LARCV_BINDIR=$LARCV_BUILDDIR/bin
-export LARCV_INCLUDES="-I${LARCV_INCDIR} `python-config --includes` "
+export LARCV_INCLUDES="-I${LARCV_INCDIR} `python3-config --includes` "
 export LARCV_LIBS="-L${LARCV_LIBDIR} -llarcv "
 
 # Abort if ROOT not installed. Let's check rootcint for this.
 if [ `command -v rootcling` ]; then
     export LARCV_ROOT6=1
-else 
+else
     if [[ -z `command -v rootcint` ]]; then
 	echo
 	echo Looks like you do not have ROOT installed.
@@ -63,8 +63,8 @@ fi
 if [ $LARCV_NUMPY -eq 0 ]; then
     missing+=" Numpy"
 else
-    LARCV_INCLUDES="${LARCV_INCLUDES} -I`python -c\"import numpy; print(numpy.get_include())\"`"
-    LARCV_LIBS="-L`python-config --prefix`/lib/ `python-config --ldflags` ${LARCV_LIBS}"
+    LARCV_INCLUDES="${LARCV_INCLUDES} -I`python3 -c\"import numpy; print(numpy.get_include())\"`"
+    LARCV_LIBS="-L`python3-config --prefix`/lib/ `python3-config --ldflags` ${LARCV_LIBS}"
 fi
 if [[ $missing ]]; then
     printf "\033[93mWarning\033[00m ... missing$missing support. Build without them.\n";
@@ -89,7 +89,7 @@ if [ $LARCV_OPENCV -eq 1 ]; then
     #export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$OPENCV_LIBDIR
     #export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:$OPENCV_LIBDIR
     [[ ":$LD_LIBRARY_PATH:" != *":${OPENCV_LIBDIR}:"* ]] && LD_LIBRARY_PATH="${OPENCV_LIBDIR}:${LD_LIBRARY_PATH}"
-    [[ ":$DYLD_LIBRARY_PATH:" != *":${OPENCV_LIBDIR}:"* ]] && DYLD_LIBRARY_PATH="${OPENCV_LIBDIR}:${DYLD_LIBRARY_PATH}"        
+    [[ ":$DYLD_LIBRARY_PATH:" != *":${OPENCV_LIBDIR}:"* ]] && DYLD_LIBRARY_PATH="${OPENCV_LIBDIR}:${DYLD_LIBRARY_PATH}"
 fi
 
 mkdir -p $LARCV_BUILDDIR;

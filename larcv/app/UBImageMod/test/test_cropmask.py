@@ -29,7 +29,7 @@ DebugImage: false
 MaxImages: 10
 RandomizeCrops: true
 MaxRandomAttempts: 60
-MinFracPixelsInCrop: 0.0001
+MinFracPixelsInCrop: 0.0003
 """
 
 fcfg = open("ubsplit.cfg",'w')
