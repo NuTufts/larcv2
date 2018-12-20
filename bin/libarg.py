@@ -1,4 +1,4 @@
-
+from __future__ import print_functions
 import sys,os
 
 if sys.version_info.major == 3:

@@ -74,8 +74,8 @@ fi
 if [ $LARCV_NUMPY -eq 0 ]; then
     missing+=" Numpy"
 else
-    LARCV_INCLUDES="${LARCV_INCLUDES} -I`python -c\"import numpy; print(numpy.get_include())\"`"
-    LARCV_LIBS="-L`python-config --prefix`/lib/ `python-config --ldflags` ${LARCV_LIBS}"
+    LARCV_INCLUDES="${LARCV_INCLUDES} -I`${LARCV_PYTHON} -c\"import numpy; print(numpy.get_include())\"`"
+    LARCV_LIBS="-L`${LARCV_PYTHON}-config --prefix`/lib/ `${LARCV_PYTHON}-config --ldflags` ${LARCV_LIBS}"
 fi
 if [[ $missing ]]; then
     printf "\033[93mWarning\033[00m ... missing$missing support. Build without them.\n";
