@@ -24,6 +24,7 @@ namespace larcv {
 /// Utility function: call one-time-only numpy module initialization (you don't
 /// have to call)
 int SetPyUtil();
+ 
 ///
 template <class T>
 PyObject* _as_ndarray(const std::vector<T>& data);
