@@ -17,12 +17,23 @@ if [[ -z $LARCV_BUILDDIR ]]; then
     export LARCV_BUILDDIR=$LARCV_BASEDIR/build
 fi
 
+# set the python version
+if [[ -z $LARCV_PYTHON_VERSION ]]; then
+    export LARCV_PYTHON_VERSION=`python -V 2>&1 | awk '{ print $2 }' | sed 's/\./\ /g' | awk '{ print $1 }'`
+    echo "LARCV_PYTHON_VERSION =  ${LARCV_PYTHON_VERSION}"
+else
+    echo "LARCV_PYTHON_VERSION =  ${LARCV_PYTHON_VERSION} (ALREADY SPECIFIED)"
+fi
+export LARCV_PYTHON="python${LARCV_PYTHON_VERSION}"
+echo "LARCV_PYTHON = ${LARCV_PYTHON}"
+
+
 export LARCV_COREDIR=$LARCV_BASEDIR/larcv/core
 export LARCV_APPDIR=$LARCV_BASEDIR/larcv/app
 export LARCV_LIBDIR=$LARCV_BUILDDIR/lib
 export LARCV_INCDIR=$LARCV_BUILDDIR/include
 export LARCV_BINDIR=$LARCV_BUILDDIR/bin
-export LARCV_INCLUDES="-I${LARCV_INCDIR} `python-config --includes` "
+export LARCV_INCLUDES="-I${LARCV_INCDIR} `${LARCV_PYTHON}-config --includes` "
 export LARCV_LIBS="-L${LARCV_LIBDIR} -llarcv "
 
 # Abort if ROOT not installed. Let's check rootcint for this.

@@ -10,12 +10,13 @@
 
 namespace larcv {
 
-void SetPyUtil() {
+int SetPyUtil() {
   static bool once = false;
   if (!once) {
     import_array();
     once = true;
   }
+  return 0;
 }
 
 PyObject *as_ndarray_mask(const ClusterMask &mask) {
