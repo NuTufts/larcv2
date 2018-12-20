@@ -1,4 +1,5 @@
-import ROOT,os
+import os
+import ROOT
 if not 'LARCV_BASEDIR' in os.environ:
     print('$LARCV_BASEDIR shell env. var. not found (run configure.sh)')
     raise ImportError
