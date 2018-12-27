@@ -424,27 +424,27 @@ namespace larcv {
                //Add Type Counter:
                if (masks_vv[plane][m].type == 13) {
                  nCosmic++;
-                 final_type = 0;
+                 final_type = 1;
                }
                else if (masks_vv[plane][m].type == 2112) {
                  nNeutron++;
-                 final_type =1;
+                 final_type =2;
                }
                else if (masks_vv[plane][m].type == 2212) {
                  nProton++;
-                 final_type =2;
+                 final_type =3;
                }
                else if (masks_vv[plane][m].type == 11) {
                  nElectron++;
-                 final_type =3;
+                 final_type =4;
                }
                else if (masks_vv[plane][m].type == -1) {
                  nNeutrino++;
-                 final_type =4;
+                 final_type =5;
                }
                else {
                  nOther++;
-                 final_type =5;
+                 final_type =6;
                }
 
 
