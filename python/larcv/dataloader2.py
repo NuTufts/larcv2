@@ -21,7 +21,7 @@ class batch_pydata(object):
       self._dim_data = None
       self._time_copy = None
       self._time_reshape = None
-      
+
    def batch_data_size(self):
       dsize=1
       for v in self._dim_data: dsize *= v
@@ -39,13 +39,13 @@ class batch_pydata(object):
 
       # set dimension
       if self._dim_data is None:
-         self._dim_data = np.array([dim[i] for i in xrange(dim.size())]).astype(np.int32)
+         self._dim_data = np.array([dim[i] for i in range(dim.size())]).astype(np.int32)
 
       else:
          if not len(self._dim_data) == dim.size():
             sys.stderr.write('Dimension array length changed (%d => %d)\n' % (len(self._dim_data),dim.size()))
             raise TypeError
-         for i in xrange(len(self._dim_data)):
+         for i in range(len(self._dim_data)):
             if not self._dim_data[i] == dim[i]:
                sys.stderr.write('%d-th dimension changed (%d => %d)\n' % (i,self._dim_data[i],dim[i]))
                raise ValueError
@@ -106,7 +106,7 @@ class larcv_threadio (object):
    def configure(self,cfg):
       # if "this" was configured before, reset it
       if self._name: self.reset()
-         
+
       # get name
       if not cfg['filler_name']:
          sys.stderr.write('filler_name is empty!\n')
@@ -116,7 +116,7 @@ class larcv_threadio (object):
       if self.__class__.exist(cfg['filler_name']) and not self.__class__.instance_by_name(cfg['filler_name']) == self:
          sys.stderr.write('filler_name %s already running!' % cfg['filler_name'])
          return
-      self._name = cfg['filler_name']         
+      self._name = cfg['filler_name']
 
       # get ThreadProcessor config file
       self._cfg_file = cfg['filler_cfg']
@@ -135,7 +135,7 @@ class larcv_threadio (object):
 
       # fetch batch filler info
       self._storage = {}
-      for i in xrange(self._proc.batch_fillers().size()):
+      for i in range(self._proc.batch_fillers().size()):
          pid = self._proc.batch_fillers()[i]
          name = self._proc.storage_name(pid)
          dtype = larcv.BatchDataTypeName(self._proc.batch_types()[i])
@@ -156,7 +156,7 @@ class larcv_threadio (object):
          if batch_size<1:
             sys.stderr.write('batch_size must be positive integer!\n')
             raise ValueError
-      except TypeError, ValueError:
+      except TypeError as ValueError:
          sys.stderr.write('batch_size value/type error. aborting...\n')
          return
 
@@ -240,7 +240,7 @@ class larcv_threadio (object):
 
       self._current_storage_id = next_storage_id
       self._current_storage_state = 1
-      return 
+      return
 
    def fetch_data(self,key):
       try:
@@ -265,6 +265,3 @@ def sig_kill(signal,frame):
       ptr.reset()
 
 signal.signal(signal.SIGINT,  sig_kill)
-
-
-
