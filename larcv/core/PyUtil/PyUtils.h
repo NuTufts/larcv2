@@ -19,12 +19,13 @@ typedef _object PyObject;
 
 #include "larcv/core/DataFormat/Voxel3D.h"
 #include "larcv/core/DataFormat/Voxel3DMeta.h"
+#include "larcv/core/DataFormat/SparseImage.h"
 
 namespace larcv {
 /// Utility function: call one-time-only numpy module initialization (you don't
 /// have to call)
 int SetPyUtil();
- 
+
 ///
 template <class T>
 PyObject* _as_ndarray(const std::vector<T>& data);
@@ -46,6 +47,8 @@ PyObject* as_ndarray(const SparseTensor3D &data, bool clear_mem=false);
 PyObject* as_ndarray_bbox(const ClusterMask &mask);
 /// larcv::ClusterMask points_v to numpy array converter
 PyObject* as_ndarray_mask(const ClusterMask &mask);
+PyObject* as_ndarray( const larcv::SparseImage&,
+                        larcv::msg::Level_t verbosity=larcv::msg::kNORMAL );
 /// copy array
 template <class T>
 void _copy_array(PyObject *arrayin, const std::vector<T> &cvec);

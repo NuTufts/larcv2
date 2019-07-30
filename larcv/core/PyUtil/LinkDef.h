@@ -42,6 +42,7 @@
 
 #pragma link C++ function larcv::as_chstatus ( PyObject*, const int );
 #pragma link C++ function larcv::as_eventchstatus ( PyObject* );
+#pragma link C++ function larcv::as_ndarray ( const larcv::SparseImage&, larcv::msg::Level_t )+;
 #endif
 #pragma link C++ class larcv::load_pyutil+;
 #pragma link C++ class larcv::PyImageMaker+;

@@ -85,6 +85,10 @@
 #pragma link C++ class std::vector<std::vector<larcv::ClusterMask>>+;
 #pragma link C++ class larcv::EventClusterMask+;
 
+#pragma link C++ class larcv::SparseImage+;
+#pragma link C++ class std::vector<larcv::SparseImage>+;
+#pragma link C++ class larcv::EventSparseImage+;
+
 
 #pragma link C++ class larcv::FlatTensorContents+;
 #pragma link C++ function larcv::as_image2d(const SparseTensor2D&)+;

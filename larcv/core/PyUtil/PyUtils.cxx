@@ -644,7 +644,48 @@ template PyObject* numpy_array<float>(std::vector<size_t>dims);
 
     return evchstatus;
   }
+  PyObject* as_ndarray( const larcv::SparseImage& sparseimg,
+                        larcv::msg::Level_t verbosity ) {
 
+    larcv::SetPyUtil();
+
+    size_t stride = 2+sparseimg.nfeatures();
+    size_t npts   = sparseimg.pixellist().size()/stride;
+    if ( verbosity==larcv::msg::kDEBUG )
+      larcv::logger::get("pyutils::as_ndarray(sparseimg)").send( larcv::msg::kDEBUG, __FUNCTION__, __LINE__, __FILE__ )
+        << " npts=" << npts << " stride=" << stride << std::endl;
+
+    npy_intp *dim_data = new npy_intp[2];
+    dim_data[0] = npts;
+    dim_data[1] = stride;
+    PyArrayObject* array = nullptr;
+    try {
+      array = (PyArrayObject*)PyArray_SimpleNew( 2, dim_data, NPY_FLOAT );
+    }
+    catch (std::exception& e ) {
+      larcv::logger::get("pyutils::as_ndarray(sparseimage)").send( larcv::msg::kCRITICAL, __FUNCTION__, __LINE__, __FILE__ )
+        << "trouble allocating new pyarray: " << e.what() << std::endl;
+      throw larbys();
+    }
+
+
+    if ( verbosity==larcv::msg::kDEBUG )
+      larcv::logger::get("pyutils::as_ndarray(sparseimg)").send( larcv::msg::kDEBUG, __FUNCTION__, __LINE__, __FILE__ )
+        << "fill array with " << npts << " points" << std::endl;
+
+    for ( size_t ipt=0; ipt<npts; ipt++ ) {
+      for ( size_t ifeat=0; ifeat<stride; ifeat++ ) {
+        *((float*)PyArray_GETPTR2( array, ipt, ifeat )) = sparseimg.pixellist()[stride*ipt+ifeat];
+      }
+    }
+
+    if ( verbosity==larcv::msg::kDEBUG )
+      larcv::logger::get("pyutils::as_ndarray(sparseimg)").send( larcv::msg::kDEBUG, __FUNCTION__, __LINE__, __FILE__ )
+        << "returned array" << std::endl;
+
+    return (PyObject*)array;
+
+  }
 
 
 }//end of larcv namespace
